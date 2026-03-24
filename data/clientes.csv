@@ -1,0 +1,82 @@
+ClienteID,Nome,Balcão,Tipo,Estado Atualização,Risco,Justificativa,Perfil do Cliente,Nível de Risco do Cliente,Prazo para Atualização,Histórico de Atualizações,Estado da Atualização,Completude dos Documentos,Validade dos Documentos,Consistência das Informações,Tempo de Resposta do Cliente,Deteção de Anomalias,Sinais de Fraude,Alteração Suspeita de Dados,Erro de Processamento,Retrabalho Necessário,Atrasos no Cumprimento Regulatório
+1,Maria Silva,Praia,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+2,Ana Santos,Espargos,Particular,Pendente,Baixo,"Documentação completa",Particular,Médio,Médio,Irregular,Pendente,Completo,Próximo do vencimento,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+3,João Santos,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Faltando,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+4,Luís Silva,Mindelo,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+5,Rita Martins,Praia,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+6,Bruno Vieira,Espargos,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Médio,Longo,Irregular,Pendente,Incompleto,Vencido,Consistente,Lento,Baixa,Suspeito,Sim,Nenhum,Sim,Sim
+7,Carlos Gomes,Praia,Particular,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+8,Maria Gomes,Mindelo,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Inconsistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+9,Bruno Alves,Praia,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Faltando,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+10,Tiago Pires,Mindelo,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+11,Maria Silva,Praia,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Médio,Irregular,Pendente,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+12,Daniel Mendes,Mindelo,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+13,Rita Gomes,Praia,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Curto,Faltando,Pendente,Completo,Válido,Consistente,Rápido,Baixa,Suspeito,Não,Nenhum,Não,Sim
+14,Carlos Pires,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+15,Bruno Mendes,Mindelo,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Sim,Não
+16,Paulo Ribeiro,Praia,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+17,Carlos Silva,Mindelo,Empresarial,Pendente,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Irregular,Pendente,Incompleto,Vencido,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Sim
+18,Maria Mendes16,Praia,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+19,Rita Vieira,Espargos,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+20,Ana Mendes,Mindelo,Empresarial,Pendente,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+21,Pedro Gomes,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+22,Rita Santos,Espargos,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+23,Inês Costa,Praia,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+24,Pedro Martins,Praia,Empresarial,Pendente,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+25,Daniel Silva,Praia,Particular,Pendente,Alto,"Transações suspeitas",Particular,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+26,Sofia Santos,Praia,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+27,Rita Silva,Praia,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+28,Fátima Santos,Espargos,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+29,Sofia Costa,Praia,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+30,João Santos,Mindelo,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Faltando,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+31,João Mendes,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+32,Rita Santos,Espargos,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+33,Rita Ribeiro,Espargos,Particular,Pendente,Alto,"Transações suspeitas",Particular,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+34,Daniel Martins,Praia,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Regular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+35,Cláudia Mendes,Espargos,Empresarial,Pendente,Alto,"Transações suspeitas",Empresarial,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+36,Inês Gomes,Praia,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Pendente,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+37,Carlos Mendes,Mindelo,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Médio,Irregular,Pendente,Completo,Próximo do vencimento,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+38,Luís Ribeiro,Praia,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+39,Maria Silva,Mindelo,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+40,Daniel Gomes,Mindelo,Particular,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+41,Inês Alves,Mindelo,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+42,Fátima Martins,Espargos,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+43,Cláudia Vieira,Mindelo,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+44,Inês Vieira,Espargos,Empresarial,Pendente,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+45,Rita Silva,Praia,Particular,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+46,Bruno Gomes,Mindelo,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+47,Carlos Ribeiro,Praia,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+48,Ana Pires,Mindelo,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+49,Rita Ribeiro,Mindelo,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+50,Tiago Silva,Espargos,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+51,Pedro Alves,Praia,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+52,Fátima Silva,Mindelo,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Rápido,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+53,Pedro Pires,Praia,Empresarial,Pendente,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Consistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+54,Bruno Ribeiro,Mindelo,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+55,Paulo Mendes,Mindelo,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+56,Sofia Silva,Espargos,Particular,Pendente,Alto,"Transações suspeitas",Particular,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+57,Fátima Ribeiro,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+58,Maria Costa,Espargos,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+59,Daniel Mendes,Mindelo,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+60,Carlos Martins,Espargos,Particular,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+61,Inês Martins,Praia,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Pendente,Incompleto,Válido,Consistente,Rápido,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+62,Inês Gomes,Espargos,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Inconsistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+63,Ana Pires,Praia,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Pendente,Incompleto,Válido,Consistente,Rápido,Baixa,Nenhuma,Não,Nenhum,Não,Não
+64,João Alves,Praia,Particular,Atualizado,Alto,"Transações suspeitas",Particular,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+65,Carlos Ribeiro,Praia,Empresarial,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Empresarial,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+66,Fátima Santos,Praia,Particular,Pendente,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Irregular,Pendente,Incompleto,Próximo do vencimento,Inconsistente,Moderado,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+67,Ana Alves,Praia,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+68,Daniel Ribeiro,Espargos,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+69,Paulo Santos,Praia,Particular,Atualizado,Médio,"Movimentos elevados justificados parcialmente",Particular,Médio,Médio,Regular,Atualizado,Completo,Válido,Consistente,Moderado,Nenhuma,Ausente,Não,Nenhum,Não,Não
+70,Paulo Martins,Praia,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Irregular,Pendente,Incompleto,Válido,Inconsistente,Rápido,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+71,Inês Pires,Praia,Empresarial,Pendente,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Pendente,Incompleto,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+72,Maria Vieira,Praia,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+73,Sofia Costa,Espargos,Empresarial,Atualizado,Alto,"Transações suspeitas",Empresarial,Alto,Longo,Irregular,Atualizado,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+74,Rita Ribeiro,Mindelo,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+75,Maria Costa,Praia,Particular,Pendente,Alto,"Transações suspeitas",Particular,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+76,Tiago Costa,Praia,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+77,Paulo Gomes,Espargos,Particular,Pendente,Baixo,"Documentação completa",Particular,Baixo,Curto,Irregular,Pendente,Incompleto,Válido,Inconsistente,Rápido,Baixa,Suspeito,Sim,Nenhum,Sim,Não
+78,Inês Mendes,Praia,Particular,Pendente,Alto,"Transações suspeitas",Particular,Alto,Médio,Irregular,Pendente,Incompleto,Vencido,Inconsistente,Lento,Alta,Confirmado,Sim,Ocorrido,Sim,Sim
+79,Fátima Vieira,Praia,Particular,Atualizado,Baixo,"Documentação completa",Particular,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+80,Cláudia Costa,Praia,Empresarial,Atualizado,Baixo,"Documentação completa",Empresarial,Baixo,Curto,Regular,Atualizado,Completo,Válido,Consistente,Rápido,Nenhuma,Ausente,Não,Nenhum,Não,Não
+
