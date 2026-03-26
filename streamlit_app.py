@@ -70,7 +70,7 @@ def criar_pizza_risco(df, col, titulo, hole=0.4):
     return px.pie(df, names=col, title=titulo, hole=hole, color=col, color_discrete_map=CONFIG['RISCO']['cores'], category_orders={col: CONFIG['RISCO']['ordem']}).update_traces(textinfo='percent+label')
 
 # =============================================================================
-# GERAÇÃO DE DADOS SINTÉTICOS
+# GERAÇÃO DE DADOS SINTÉTICOS (MODIFICADO)
 # =============================================================================
 @st.cache_data
 def gerar_base_clientes(n_clientes=5000, seed=42):
@@ -89,10 +89,14 @@ def gerar_base_clientes(n_clientes=5000, seed=42):
     multi_nac = [np.random.choice(['Cabo-Verdiana', 'Cabo-Verdiana/Portuguesa', 'Cabo-Verdiana/Outra'], p=[0.85, 0.12, 0.03]) if n == 'Cabo-Verdiana' else 
                  np.random.choice(['Portuguesa', 'Portuguesa/Cabo-Verdiana', 'Portuguesa/Outra'], p=[0.80, 0.15, 0.05]) if n == 'Portuguesa' else n for n in nacs]
     
-    # Tipo de cliente e residência
+    # Tipo de cliente e residência (AJUSTADO: aumentar residentes, reduzir não residentes)
     tipos, paises, cond_res = [], [], []
     for n in nacs:
-        t = np.random.choice(['Residente', 'Emigrante', 'Não Residente'], p=[0.60, 0.25, 0.15]) if n == 'Cabo-Verdiana' else np.random.choice(['Residente', 'Não Residente'], p=[0.70, 0.30])
+        # Aumentar proporção de residentes e reduzir não residentes
+        if n == 'Cabo-Verdiana': 
+            t = np.random.choice(['Residente', 'Emigrante', 'Não Residente'], p=[0.70, 0.20, 0.10])  # Antes: [0.60, 0.25, 0.15]
+        else: 
+            t = np.random.choice(['Residente', 'Não Residente'], p=[0.80, 0.20])  # Antes: [0.70, 0.30]
         tipos.append(t)
         if t == 'Residente':
             paises.append('Cabo Verde'); cond_res.append('Sim')
@@ -103,28 +107,42 @@ def gerar_base_clientes(n_clientes=5000, seed=42):
             paises.append(np.random.choice(['Portugal', 'Estados Unidos', 'Brasil', 'Angola', 'Itália'] if n == 'Cabo-Verdiana' else ['Portugal', 'Brasil', 'Angola', 'Nigéria', 'China', 'Senegal', 'Outro'], p=[0.40, 0.25, 0.15, 0.12, 0.08] if n == 'Cabo-Verdiana' else [0.20, 0.20, 0.15, 0.15, 0.15, 0.10, 0.05]))
             cond_res.append('Não')
     
-    # Financeiro
-    rendimentos = np.round(np.random.lognormal(9.8, 0.9, n_clientes), 0).astype(int)
-    tipos_conta = [np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.60, 0.35, 0.05]) if r < 20000 else
-                   np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.20, 0.60, 0.20]) if r < 50000 else
-                   np.random.choice(['Conta Standard', 'Conta Premium', 'Conta Private'], p=[0.15, 0.55, 0.30]) for r in rendimentos]
-    tempos = np.clip(np.random.exponential(7, n_clientes).astype(int), 0, 40)
+    # Financeiro - AJUSTAR: aumentar rendimentos para reduzir risco
+    rendimentos = np.round(np.random.lognormal(10.2, 0.8, n_clientes), 0).astype(int)  # Antes: (9.8, 0.9) - rendimentos mais altos = menos risco
+    
+    tipos_conta = [np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.40, 0.45, 0.15]) if r < 20000 else
+                   np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.15, 0.55, 0.30]) if r < 50000 else
+                   np.random.choice(['Conta Standard', 'Conta Premium', 'Conta Private'], p=[0.10, 0.50, 0.40]) for r in rendimentos]  # Mais contas premium = menos risco
+    tempos = np.clip(np.random.exponential(8, n_clientes).astype(int), 0, 40)  # Antes: 7 - mais tempo de relacionamento = menos risco
     n_produtos = [min(min(tempo // 3, 5) + (np.random.randint(1, 4) if conta in ['Conta Premium', 'Conta Private'] else np.random.randint(0, 2)), 8) for tempo, conta in zip(tempos, tipos_conta)]
     
-    # Atividade e PEP
+    # Atividade e PEP - REDUZIR PEP
     atividades = np.random.choice(CONFIG['ATIVIDADES'], n_clientes, p=PROB_ATIV)
-    peps = ['Sim' if np.random.random() < (0.08 if a in ['Administração pública e defesa', 'Forças armadas', 'Atividades financeiras e de seguros'] else 0.04 if a in ['Atividades profissionais, científicas e técnicas', 'Atividades imobiliárias'] else 0.01) else 'Não' for a in atividades]
+    peps = ['Sim' if np.random.random() < (0.05 if a in ['Administração pública e defesa', 'Forças armadas', 'Atividades financeiras e de seguros'] else 0.02 if a in ['Atividades profissionais, científicas e técnicas', 'Atividades imobiliárias'] else 0.005) else 'Não' for a in atividades]  # Reduzir probabilidade de PEP
     
-    # Incidentes e reclamações
-    incidentes = [np.random.choice(['Nenhum', '1-2 incidentes', '3+ incidentes'], p=[1-min(0.05 + (0.10 if t in ['Emigrante', 'Não Residente'] else 0) + (0.05 if p == 'Sim' else 0), 0.35)*2, 
-                                                                                     min(0.05 + (0.10 if t in ['Emigrante', 'Não Residente'] else 0) + (0.05 if p == 'Sim' else 0), 0.35)*1.5, 
-                                                                                     min(0.05 + (0.10 if t in ['Emigrante', 'Não Residente'] else 0) + (0.05 if p == 'Sim' else 0), 0.35)*0.5]) for t, p in zip(tipos, peps)]
-    reclamacoes = [np.random.choice([0, 1, 2], p=np.array([0.85, 0.12, 0.03] if inc == 'Nenhum' else [0.40, 0.35, 0.25] if inc == '1-2 incidentes' else [0.20, 0.30, 0.50]) / sum([0.85, 0.12, 0.03] if inc == 'Nenhum' else [0.40, 0.35, 0.25] if inc == '1-2 incidentes' else [0.20, 0.30, 0.50])) + (1 if t in ['Emigrante', 'Não Residente'] else 0) for inc, t in zip(incidentes, tipos)]
+    # Histórico de incidentes e reclamações - REDUZIR incidentes
+    incidentes = []
+    for t, p in zip(tipos, peps):
+        # Reduzir significativamente a probabilidade de incidentes
+        prob = min(0.03 + (0.05 if t in ['Emigrante', 'Não Residente'] else 0) + (0.02 if p == 'Sim' else 0), 0.25)  # Antes: 0.05 base, agora 0.03
+        incidentes.append(np.random.choice(['Nenhum', '1-2 incidentes', '3+ incidentes'], p=[1-prob*2, prob*1.5, prob*0.5]))
+    
+    reclamacoes = []
+    for inc, t in zip(incidentes, tipos):
+        base = 0 if t in ['Emigrante', 'Não Residente'] else 0  # Antes: base = 1, agora 0
+        if inc == 'Nenhum':
+            probs = [0.90, 0.08, 0.02]  # Antes: [0.85, 0.12, 0.03]
+        elif inc == '1-2 incidentes':
+            probs = [0.50, 0.35, 0.15]  # Antes: [0.40, 0.35, 0.25]
+        else:
+            probs = [0.30, 0.35, 0.35]  # Antes: [0.20, 0.30, 0.50]
+        probs = np.array(probs) / sum(probs)
+        reclamacoes.append(np.random.choice([0, 1, 2], p=probs) + base)
     
     # Classificação inicial
     riscos = [classificar_risco(calcular_score(t, i, r, rend, temp, p)) for t, i, r, rend, temp, p in zip(tipos, incidentes, reclamacoes, rendimentos, tempos, peps)]
     
-    # Datas KYC
+    # Datas KYC - AJUSTAR para mais risco baixo
     datas_ult, datas_prox, status_atual = [], [], []
     for risco, tempo in zip(riscos, tempos):
         ultima = data_atual - timedelta(days=np.random.randint(30, max(int(tempo * 365), 31)))
@@ -134,20 +152,20 @@ def gerar_base_clientes(n_clientes=5000, seed=42):
         datas_prox.append(proxima)
         status_atual.append('Atrasado' if (proxima - data_atual).days < 0 else 'A vencer' if (proxima - data_atual).days <= 90 else 'Em dia')
     
-    # Documentação
+    # Documentação - AJUSTAR para reduzir documentação expirada
     tipos_doc, datas_emiss, datas_val, status_doc = [], [], [], []
     for tipo_cli, nac, idade in zip(tipos, nacs, idades):
         if tipo_cli == 'Emigrante':
-            doc = np.random.choice(['Passaporte CV', 'Prova de Emigrante', 'BI Cabo-Verdiano'], p=[0.50, 0.35, 0.15])
+            doc = np.random.choice(['Passaporte CV', 'Prova de Emigrante', 'BI Cabo-Verdiano'], p=[0.55, 0.30, 0.15])  # Antes: [0.50, 0.35, 0.15]
         elif tipo_cli == 'Não Residente':
-            doc = np.random.choice(['Passaporte CV', 'BI Cabo-Verdiano', 'CC'], p=[0.60, 0.30, 0.10]) if nac == 'Cabo-Verdiana' else np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.70, 0.20, 0.10])
+            doc = np.random.choice(['Passaporte CV', 'BI Cabo-Verdiano', 'CC'], p=[0.65, 0.25, 0.10]) if nac == 'Cabo-Verdiana' else np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.75, 0.15, 0.10])
         else:
             if idade < 18:
-                doc = np.random.choice(['Certidão Nascimento', 'BI Cabo-Verdiano (Menor)'], p=[0.80, 0.20])
+                doc = np.random.choice(['Certidão Nascimento', 'BI Cabo-Verdiano (Menor)'], p=[0.85, 0.15])
             elif nac == 'Cabo-Verdiana':
-                doc = np.random.choice(['BI Cabo-Verdiano', 'CC', 'Passaporte CV'], p=[0.75, 0.15, 0.10])
+                doc = np.random.choice(['BI Cabo-Verdiano', 'CC', 'Passaporte CV'], p=[0.80, 0.12, 0.08])
             else:
-                doc = np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.50, 0.30, 0.20])
+                doc = np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.55, 0.25, 0.20])
         tipos_doc.append(doc)
         emissao = data_atual - timedelta(days=np.random.randint(30, 3650))
         datas_emiss.append(emissao)
@@ -155,10 +173,25 @@ def gerar_base_clientes(n_clientes=5000, seed=42):
         validade = emissao + timedelta(days=anos*365)
         datas_val.append(validade)
         dias_exp = (validade - data_atual).days
-        status_doc.append('Expirado' if dias_exp < 0 else 'Quase Expirando' if dias_exp <= 90 else 'Válido')
+        # Reduzir documentação expirada
+        if dias_exp < 0:
+            status_doc.append('Expirado' if np.random.random() < 0.7 else 'Quase Expirando')  # Antes: sempre 'Expirado'
+        else:
+            status_doc.append('Expirado' if dias_exp < 0 else 'Quase Expirando' if dias_exp <= 60 else 'Válido')  # Antes: 90 dias
     
     # Reclassificação final e scores
     riscos_finais = [classificar_risco(calcular_score(t, i, r, rend, temp, p, d)) for t, i, r, rend, temp, p, d in zip(tipos, incidentes, reclamacoes, rendimentos, tempos, peps, status_doc)]
+    
+    # Ajustar manualmente a distribuição final para garantir mais risco baixo
+    # Converter alguns clientes de risco médio para baixo
+    riscos_finais_arr = np.array(riscos_finais)
+    indices_medio = np.where(riscos_finais_arr == 'Médio')[0]
+    n_converter = int(len(indices_medio) * 0.3)  # Converter 30% dos médios para baixo
+    if n_converter > 0:
+        indices_converter = np.random.choice(indices_medio, n_converter, replace=False)
+        for idx in indices_converter:
+            riscos_finais[idx] = 'Baixo'
+    
     scores_conf = [min((25 if d == 'Válido' else 15 if d == 'Quase Expirando' else 0) + (25 if s == 'Em dia' else 15 if s == 'A vencer' else 0) + (20 if i == 'Nenhum' else 10 if i == '1-2 incidentes' else 0) + (15 if r == 0 else 8 if r <= 2 else 0) + (15 if t == 'Residente' else 10 if t == 'Emigrante' else 0) + (10 if p == 'Não' else 0), 100) for d, s, i, r, t, p in zip(status_doc, status_atual, incidentes, reclamacoes, tipos, peps)]
     freq_atual = ['5 anos' if r == 'Baixo' else '2 anos' if r == 'Médio' else '1 ano' for r in riscos_finais]
     
