@@ -1,701 +1,672 @@
+# -*- coding: utf-8 -*-
 """
-Dashboard de Gestão de Risco Operacional - KYC & Modelagem Bayesiana
-TFC Matemática Aplicada - 2026
-Autor: Manilson Semedo
+================================================================================
+Dashboard de Gestão de Risco Operacional - KYC
+Trabalho de Fim de Curso - Matemática Aplicada
+Universidade de Cabo Verde, 2026
+Aluno: Manilson Semedo
+
+Versão 6.5 - "Hard Rules Completas"
+- PEP = Sim -> Risco Alto (regra determinística)
+- Atividade de Risco -> Risco Alto (regra determinística)
+- Não Residente + Portugal -> Risco Médio (regra determinística)
+- Não Residente + País Africano -> Risco Alto (regra determinística)
+================================================================================
 """
 
-# =============================================================================
-# IMPORTAÇÕES E CONFIGURAÇÃO INICIAL
-# =============================================================================
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 import networkx as nx
+import warnings
+warnings.filterwarnings('ignore')
+
 from pgmpy.models import DiscreteBayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
-import warnings; warnings.filterwarnings('ignore')
+from sklearn.metrics import confusion_matrix, cohen_kappa_score, accuracy_score
 
-# =============================================================================
-# CONFIGURAÇÕES CENTRALIZADAS
-# =============================================================================
-st.set_page_config(page_title="Dashboard Risco Operacional - KYC", page_icon="🏦", layout="wide")
+# ---------------------------------------------------------------------------
+# CONFIGURAÇÃO E CSS
+# ---------------------------------------------------------------------------
+st.set_page_config(page_title="KYC Risk Analytics", page_icon="📊", layout="wide")
 
-CONFIG = {
-    'RISCO': {'ordem': ['Baixo', 'Médio', 'Alto'], 'cores': {'Baixo': '#2ECC71', 'Médio': '#F39C12', 'Alto': '#E74C3C'}, 'limiares': {'Baixo': 2, 'Medio': 5}},
-    'ILHAS': {'nomes': ['Santiago', 'Sal', 'São Vicente', 'Boa Vista', 'Maio', 'Fogo', 'Brava', 'Santo Antão', 'São Nicolau'], 
-              'probs': np.array([0.55, 0.10, 0.20, 0.06, 0.015, 0.04, 0.005, 0.03, 0.005])},
-    'NACIONALIDADES': ['Cabo-Verdiana', 'Portuguesa', 'Brasileira', 'Angolana', 'Guineense', 'Senegalesa', 'Nigeriana', 'Outra'],
-    'ATIVIDADES': ['Comércio por grosso e a retalho', 'Atividades de construção', 'Alojamento e restauração', 'Atividades financeiras e de seguros', 'Atividades imobiliárias', 'Atividades profissionais, científicas e técnicas', 'Atividades administrativas e de apoio', 'Administração pública e defesa', 'Educação', 'Saúde humana e apoio social', 'Artes, entretenimento e recreação', 'Outras atividades de serviços', 'Agricultura, pecuária e pesca', 'Indústria transformadora', 'Transporte e armazenagem', 'Informação e comunicação', 'Forças armadas', 'Estudante', 'Desempregado', 'Reformado', 'Outra'],
-    'PAISES': ['Portugal', 'Estados Unidos', 'Brasil', 'Angola', 'Itália', 'França', 'Holanda', 'Luxemburgo', 'Suíça', 'Espanha', 'Alemanha', 'Reino Unido', 'Canadá', 'Senegal', 'Guiné-Bissau', 'Nigéria', 'China', 'Outro']
-}
-CONFIG['ILHAS']['probs'] /= CONFIG['ILHAS']['probs'].sum()
-PROB_ATIV = np.array([0.15, 0.12, 0.10, 0.08, 0.08, 0.08, 0.07, 0.07, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03, 0.03, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01])
-PROB_ATIV /= PROB_ATIV.sum()
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Source Sans Pro', sans-serif; }
+    [data-testid="stSidebar"] { background-color: #F7F9FC; border-right: 1px solid #E1E8ED; }
+    .kpi-card { background: #FFFFFF; border: 1px solid #E1E8ED; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 10px; }
+    .kpi-title { font-size: 12px; color: #657786; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .kpi-value { font-size: 30px; font-weight: 700; color: #1F3A5F; margin-top: 5px; }
+    .kpi-extra { font-size: 12px; color: #8899A6; margin-top: 5px; }
+    .analise-box { background: #FFF9E6; border-left: 4px solid #F39C12; padding: 15px 20px; border-radius: 6px; margin: 20px 0; font-size: 14px; color: #2C3E50; line-height: 1.6; }
+    .analise-box strong { color: #1F3A5F; }
+    .analise-box.rule { background: #FDEDEC; border-left-color: #E74C3C; }
+    .section-title { font-size: 26px; color: #1F3A5F; font-weight: 700; border-bottom: 3px solid #3498DB; padding-bottom: 10px; margin-bottom: 20px; }
+    .section-subtitle { color: #657786; font-size: 15px; margin-bottom: 25px; font-style: italic; }
+    .hard-rule-badge { display: inline-block; background: #E74C3C; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 5px; }
+    .hard-rule-badge.orange { background: #F39C12; }
+</style>
+""", unsafe_allow_html=True)
 
-# =============================================================================
-# FUNÇÕES UTILITÁRIAS
-# =============================================================================
-def classificar_risco(score):
-    """Converte score numérico em categoria de risco (Baixo ≤2, Médio ≤5, Alto >5)"""
-    return 'Baixo' if score <= CONFIG['RISCO']['limiares']['Baixo'] else 'Médio' if score <= CONFIG['RISCO']['limiares']['Medio'] else 'Alto'
+# ---------------------------------------------------------------------------
+# CONSTANTES
+# ---------------------------------------------------------------------------
+PAIS_PARA_ISO = {'Cabo Verde': 'CPV', 'Portugal': 'PRT', 'Angola': 'AGO', 'Brasil': 'BRA', 'United Kingdom': 'GBR', 'United States Of America': 'USA', 'France': 'FRA', 'Spain': 'ESP', 'Italy': 'ITA', 'Germany': 'DEU', 'Netherlands': 'NLD', 'Belgium': 'BEL', 'Switzerland': 'CHE', 'Ireland': 'IRL', 'Luxembourg': 'LUX', 'Sweden': 'SWE', 'Norway': 'NOR', 'Denmark': 'DNK', 'Poland': 'POL', 'Peoples Republic Of China': 'CHN', 'Japan': 'JPN', 'India': 'IND', 'Senegal': 'SEN', 'Guinea-Bissau': 'GNB', 'Guinea': 'GIN', 'Nigeria': 'NGA', 'Ghana': 'GHA', 'Mozambique': 'MOZ', 'Uganda': 'UGA', 'Kenya': 'KEN', 'South Africa': 'ZAF', 'Morocco': 'MAR', 'Tunisia': 'TUN', 'Pakistan': 'PAK', 'Saudi Arabia': 'SAU', 'Bahrain': 'BHR', 'United Arab Emirates': 'ARE', 'Australia': 'AUS', 'New Zealand': 'NZL', 'Canada': 'CAN', 'Mexico': 'MEX', 'Argentina': 'ARG', 'Congo Democratic Republic': 'COD', 'Equatorial Guinea': 'GNQ'}
+FATF_NEGRO = ['COREA DO NORTE', 'IRAN', 'MYANMAR']
+FATF_CINZA = ['ANGOLA', 'BOLIVIA', 'BULGARIA', 'CAMEROON', 'COTE D\'IVOIRE', 'CONGO, DEMOCRATIC REPUBLIC', 'HAITI', 'KENYA', 'KUWAIT', 'LEBANON', 'MONACO', 'NEPAL', 'PAPUA NEW GUINEA', 'SOUTH SUDAN', 'SYRIAN ARAB REPUBLIC', 'VENEZUELA', 'VIET NAM', 'YEMEN', 'CAMARÕES', 'COSTA DO MARFIM', 'REPÚBLICA DEMOCRÁTICA DO CONGO', 'QUÉNIA', 'LÍBANO', 'MÓNACO', 'PAPUA NOVA GUINÉ', 'SUDÃO DO SUL', 'SÍRIA', 'IÉMEN']
 
-def calcular_score(tipo, incidente, reclamacao, rend, tempo, pep, doc_status=None):
-    """Calcula pontuação de risco baseada em múltiplos fatores"""
-    score = {'Não Residente': 2, 'Emigrante': 1, 'Residente': 0}.get(tipo, 0)
-    score += 2 if pep == 'Sim' else 0
-    score += {'3+ incidentes': 2, '1-2 incidentes': 1, 'Nenhum': 0}.get(incidente, 0)
-    score += 2 if reclamacao >= 3 else 1 if reclamacao >= 1 else 0
-    score += (1 if rend < 15000 else 0) + (1 if tempo < 1 else 0)
-    if doc_status:
-        score += 2 if doc_status == 'Expirado' else 1 if doc_status == 'Quase Expirando' else 0
-    return score
+# Lista de países africanos (para a regra de Não Residente + África = Alto)
+PAISES_AFRICANOS = [
+    'ANGOLA', 'SENEGAL', 'GUINEA-BISSAU', 'GUINEA', 'NIGERIA', 'GHANA', 'MOZAMBIQUE', 
+    'UGANDA', 'KENYA', 'SOUTH AFRICA', 'MOROCCO', 'TUNISIA', 'EGYPT', 'ALGERIA', 
+    'CAMEROON', 'COTE D\'IVOIRE', 'CONGO', 'CONGO, DEMOCRATIC REPUBLIC', 
+    'EQUATORIAL GUINEA', 'GABON', 'MALI', 'BURKINA FASO', 'NIGER', 'CHAD', 
+    'SUDAN', 'SOUTH SUDAN', 'ETHIOPIA', 'SOMALIA', 'TANZANIA', 'ZAMBIA', 
+    'ZIMBABWE', 'BOTSWANA', 'NAMIBIA', 'MADAGASCAR', 'MAURITIUS', 'RWANDA', 
+    'BURUNDI', 'TOGO', 'BENIN', 'LIBERIA', 'SIERRA LEONE', 'GAMBIA', 
+    'GAMBIA, THE', 'MAURITANIA', 'ERITREA', 'DJIBOUTI', 'LIBYA', 'CENTRAL AFRICAN REPUBLIC',
+    'CAMARÕES', 'COSTA DO MARFIM', 'REPÚBLICA DEMOCRÁTICA DO CONGO', 'QUÉNIA', 
+    'MOÇAMBIQUE', 'ÁFRICA DO SUL', 'MARROCOS', 'TUNÍSIA', 'EGIPTO', 'ARGÉLIA', 
+    'SUDÃO DO SUL', 'ETIÓPIA', 'SOMÁLIA', 'TANZÂNIA', 'ZÂMBIA', 'ZIMBABUÉ', 
+    'BOTSWANA', 'NAMÍBIA', 'MADAGÁSCAR', 'MAURÍCIA', 'RUANDA', 'BURUNDI', 
+    'TOGO', 'BENIM', 'LIBÉRIA', 'SERRA LEOA', 'GÂMBIA', 'MAURITÂNIA', 
+    'ERITREIA', 'JIBUTI', 'LÍBIA', 'REPÚBLICA CENTRO-AFRICANA'
+]
 
-def criar_grafico_risco_barras(df, x_col, titulo, stacked=False):
-    """Cria gráfico de barras percentuais com cores padronizadas por nível de risco"""
-    agg = df.groupby([x_col, 'Nivel_Risco']).size().unstack(fill_value=0).reindex(columns=CONFIG['RISCO']['ordem']).fillna(0)
-    agg_pct = agg.div(agg.sum(axis=1), axis=0) * 100
-    fig = go.Figure()
-    for risco in CONFIG['RISCO']['ordem']:
-        if risco in agg_pct.columns:
-            fig.add_trace(go.Bar(name=risco, x=agg_pct.index, y=agg_pct[risco], marker_color=CONFIG['RISCO']['cores'][risco]))
-    fig.update_layout(title=titulo, barmode='stack' if stacked else 'group', xaxis_title=x_col.replace('_', ' '), yaxis_title='Percentual (%)')
-    return fig
+# Atividades económicas de alto risco (regra de negócio)
+ATIVIDADES_ALTO_RISCO = ['Atividades imobiliárias', 'Atividades financeiras e de seguros', 'Jogos e apostas']
 
-def criar_pizza_risco(df, col, titulo, hole=0.4):
-    """Cria gráfico de rosca com cores padronizadas"""
-    return px.pie(df, names=col, title=titulo, hole=hole, color=col, color_discrete_map=CONFIG['RISCO']['cores'], category_orders={col: CONFIG['RISCO']['ordem']}).update_traces(textinfo='percent+label')
+CORES = {'Baixo': '#27AE60', 'Médio': '#F39C12', 'Alto': '#E74C3C'}
+CORES_DOC = {'Válido': '#27AE60', 'Quase Expirando': '#F39C12', 'Expirado': '#E74C3C', 'Vitalício': '#3498DB'}
 
-# =============================================================================
-# GERAÇÃO DE DADOS SINTÉTICOS (MODIFICADO)
-# =============================================================================
-@st.cache_data
-def gerar_base_clientes(n_clientes=5000, seed=42):
-    """Gera base de dados sintética representativa do mercado bancário cabo-verdiano"""
-    np.random.seed(seed)
-    data_atual = datetime(2024, 12, 1)
+# ---------------------------------------------------------------------------
+# FUNÇÕES DE REGRA GEOGRÁFICA
+# ---------------------------------------------------------------------------
+def is_pais_africano(pais):
+    """Verifica se um país está na lista de países africanos."""
+    if not pais:
+        return False
+    p = str(pais).upper().strip()
+    return p in PAISES_AFRICANOS
+
+def is_portugal(pais):
+    """Verifica se é Portugal."""
+    return str(pais).upper().strip() in ['PORTUGAL', 'PORTUGAL, REPÚBLICA PORTUGUESA']
+
+def classificar_geo_risco(tipo_cliente, pais_residencia):
+    """
+    Retorna 'Médio', 'Alto' ou None (sem override geográfico).
     
-    # IDs e geografia
-    ids = [f"CLI_{str(i).zfill(6)}" for i in range(1, n_clientes + 1)]
-    ilhas = np.random.choice(CONFIG['ILHAS']['nomes'], n_clientes, p=CONFIG['ILHAS']['probs'])
-    idades = np.clip(np.random.normal(40, 15, n_clientes).astype(int), 18, 90)
-    sexos = np.random.choice(['Masculino', 'Feminino'], n_clientes, p=[0.48, 0.52])
-    nacs = np.random.choice(CONFIG['NACIONALIDADES'], n_clientes, p=[0.78, 0.08, 0.05, 0.03, 0.02, 0.02, 0.01, 0.01])
+    Regras:
+    - Não Residente + Portugal -> Médio
+    - Não Residente + País Africano -> Alto
+    """
+    if tipo_cliente != 'Não Residente':
+        return None
     
-    # Múltipla nacionalidade
-    multi_nac = [np.random.choice(['Cabo-Verdiana', 'Cabo-Verdiana/Portuguesa', 'Cabo-Verdiana/Outra'], p=[0.85, 0.12, 0.03]) if n == 'Cabo-Verdiana' else 
-                 np.random.choice(['Portuguesa', 'Portuguesa/Cabo-Verdiana', 'Portuguesa/Outra'], p=[0.80, 0.15, 0.05]) if n == 'Portuguesa' else n for n in nacs]
+    if is_portugal(pais_residencia):
+        return 'Médio'
     
-    # Tipo de cliente e residência (AJUSTADO: aumentar residentes, reduzir não residentes)
-    tipos, paises, cond_res = [], [], []
-    for n in nacs:
-        # Aumentar proporção de residentes e reduzir não residentes
-        if n == 'Cabo-Verdiana': 
-            t = np.random.choice(['Residente', 'Emigrante', 'Não Residente'], p=[0.70, 0.20, 0.10])  # Antes: [0.60, 0.25, 0.15]
-        else: 
-            t = np.random.choice(['Residente', 'Não Residente'], p=[0.80, 0.20])  # Antes: [0.70, 0.30]
-        tipos.append(t)
-        if t == 'Residente':
-            paises.append('Cabo Verde'); cond_res.append('Sim')
-        elif t == 'Emigrante':
-            paises.append(np.random.choice(['Portugal', 'Estados Unidos', 'Brasil', 'Angola', 'Itália', 'França', 'Holanda', 'Luxemburgo', 'Suíça', 'Espanha'], p=[0.35, 0.20, 0.15, 0.10, 0.08, 0.05, 0.03, 0.02, 0.01, 0.01]))
-            cond_res.append('Não')
-        else:
-            paises.append(np.random.choice(['Portugal', 'Estados Unidos', 'Brasil', 'Angola', 'Itália'] if n == 'Cabo-Verdiana' else ['Portugal', 'Brasil', 'Angola', 'Nigéria', 'China', 'Senegal', 'Outro'], p=[0.40, 0.25, 0.15, 0.12, 0.08] if n == 'Cabo-Verdiana' else [0.20, 0.20, 0.15, 0.15, 0.15, 0.10, 0.05]))
-            cond_res.append('Não')
+    if is_pais_africano(pais_residencia):
+        return 'Alto'
     
-    # Financeiro - AJUSTAR: aumentar rendimentos para reduzir risco
-    rendimentos = np.round(np.random.lognormal(10.2, 0.8, n_clientes), 0).astype(int)  # Antes: (9.8, 0.9) - rendimentos mais altos = menos risco
+    return None
+
+# ---------------------------------------------------------------------------
+# CARREGAMENTO
+# ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def carregar_dados():
+    try:
+        df = pd.read_csv('clientes_banco_real.csv')
+    except FileNotFoundError:
+        st.error("Ficheiro 'clientes_banco_real.csv' não encontrado.")
+        st.stop()
+        
+    df.columns = [c.replace('\ufeff', '').strip() for c in df.columns]
     
-    tipos_conta = [np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.40, 0.45, 0.15]) if r < 20000 else
-                   np.random.choice(['Conta Básica', 'Conta Standard', 'Conta Premium'], p=[0.15, 0.55, 0.30]) if r < 50000 else
-                   np.random.choice(['Conta Standard', 'Conta Premium', 'Conta Private'], p=[0.10, 0.50, 0.40]) for r in rendimentos]  # Mais contas premium = menos risco
-    tempos = np.clip(np.random.exponential(8, n_clientes).astype(int), 0, 40)  # Antes: 7 - mais tempo de relacionamento = menos risco
-    n_produtos = [min(min(tempo // 3, 5) + (np.random.randint(1, 4) if conta in ['Conta Premium', 'Conta Private'] else np.random.randint(0, 2)), 8) for tempo, conta in zip(tempos, tipos_conta)]
+    for col in ['Data_Validade', 'Data_Emissao']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
     
-    # Atividade e PEP - REDUZIR PEP
-    atividades = np.random.choice(CONFIG['ATIVIDADES'], n_clientes, p=PROB_ATIV)
-    peps = ['Sim' if np.random.random() < (0.05 if a in ['Administração pública e defesa', 'Forças armadas', 'Atividades financeiras e de seguros'] else 0.02 if a in ['Atividades profissionais, científicas e técnicas', 'Atividades imobiliárias'] else 0.005) else 'Não' for a in atividades]  # Reduzir probabilidade de PEP
+    if 'Data_Validade' in df.columns:
+        df.loc[df['Data_Validade'].dt.year >= 2099, 'Status_Documento'] = 'Vitalício'
     
-    # Histórico de incidentes e reclamações - REDUZIR incidentes
-    incidentes = []
-    for t, p in zip(tipos, peps):
-        # Reduzir significativamente a probabilidade de incidentes
-        prob = min(0.03 + (0.05 if t in ['Emigrante', 'Não Residente'] else 0) + (0.02 if p == 'Sim' else 0), 0.25)  # Antes: 0.05 base, agora 0.03
-        incidentes.append(np.random.choice(['Nenhum', '1-2 incidentes', '3+ incidentes'], p=[1-prob*2, prob*1.5, prob*0.5]))
+    if 'PEP_RCA' in df.columns:
+        df['PEP_RCA'] = df['PEP_RCA'].apply(lambda x: 'Sim' if str(x).upper() in ['Y', 'S', 'SIM'] else 'Não')
     
-    reclamacoes = []
-    for inc, t in zip(incidentes, tipos):
-        base = 0 if t in ['Emigrante', 'Não Residente'] else 0  # Antes: base = 1, agora 0
-        if inc == 'Nenhum':
-            probs = [0.90, 0.08, 0.02]  # Antes: [0.85, 0.12, 0.03]
-        elif inc == '1-2 incidentes':
-            probs = [0.50, 0.35, 0.15]  # Antes: [0.40, 0.35, 0.25]
-        else:
-            probs = [0.30, 0.35, 0.35]  # Antes: [0.20, 0.30, 0.50]
-        probs = np.array(probs) / sum(probs)
-        reclamacoes.append(np.random.choice([0, 1, 2], p=probs) + base)
+    if 'Nivel_Risco' in df.columns:
+        df['Nivel_Risco'] = df['Nivel_Risco'].replace({'LOW': 'Baixo', 'MED': 'Médio', 'HIGH': 'Alto'}).fillna('Médio')
     
-    # Classificação inicial
-    riscos = [classificar_risco(calcular_score(t, i, r, rend, temp, p)) for t, i, r, rend, temp, p in zip(tipos, incidentes, reclamacoes, rendimentos, tempos, peps)]
+    if 'Idade' in df.columns:
+        df['Idade'] = pd.to_numeric(df['Idade'], errors='coerce')
+        df['Faixa_Etaria'] = pd.cut(df['Idade'], bins=[0, 25, 40, 60, 75, 120], labels=['18-25', '26-40', '41-60', '61-75', '76+'])
     
-    # Datas KYC - AJUSTAR para mais risco baixo
-    datas_ult, datas_prox, status_atual = [], [], []
-    for risco, tempo in zip(riscos, tempos):
-        ultima = data_atual - timedelta(days=np.random.randint(30, max(int(tempo * 365), 31)))
-        datas_ult.append(ultima)
-        dias_add = 5*365 if risco == 'Baixo' else 2*365 if risco == 'Médio' else 365
-        proxima = ultima + timedelta(days=dias_add)
-        datas_prox.append(proxima)
-        status_atual.append('Atrasado' if (proxima - data_atual).days < 0 else 'A vencer' if (proxima - data_atual).days <= 90 else 'Em dia')
+    if 'Pais_Residencia' in df.columns:
+        def classificar_fatf(pais):
+            p = str(pais).upper().strip()
+            if p in FATF_NEGRO: return 'Lista Negra'
+            elif p in FATF_CINZA: return 'Lista Cinza'
+            return 'Sem Sinalização'
+        df['Pais_FATF'] = df['Pais_Residencia'].apply(classificar_fatf)
+        df['Pais_Alto_Risco'] = df['Pais_FATF'].apply(lambda x: 'Sim' if x != 'Sem Sinalização' else 'Não')
+
+    if 'Status_Documento' in df.columns:
+        df['Documentacao_Expirada'] = df['Status_Documento'].apply(lambda x: 'Sim' if x == 'Expirado' else 'Não')
+
+    if 'Tipo_Cliente' in df.columns:
+        df['Cliente_Nao_Residente'] = df['Tipo_Cliente'].apply(lambda x: 'Sim' if x == 'Não Residente' else 'Não')
+
+    # Mapeamento de Atividades para a Rede Bayesiana (3 grupos)
+    if 'Atividade_Economica' in df.columns:
+        def obter_grupo_atividade(ativ):
+            ativ_str = str(ativ).strip()
+            if any(r in ativ_str for r in ATIVIDADES_ALTO_RISCO):
+                return 'Risco_Critico'
+            elif 'construção' in ativ_str.lower():
+                return 'Construcao'
+            return 'Outros'
+        df['Atividade_Grupo'] = df['Atividade_Economica'].apply(obter_grupo_atividade)
     
-    # Documentação - AJUSTAR para reduzir documentação expirada
-    tipos_doc, datas_emiss, datas_val, status_doc = [], [], [], []
-    for tipo_cli, nac, idade in zip(tipos, nacs, idades):
-        if tipo_cli == 'Emigrante':
-            doc = np.random.choice(['Passaporte CV', 'Prova de Emigrante', 'BI Cabo-Verdiano'], p=[0.55, 0.30, 0.15])  # Antes: [0.50, 0.35, 0.15]
-        elif tipo_cli == 'Não Residente':
-            doc = np.random.choice(['Passaporte CV', 'BI Cabo-Verdiano', 'CC'], p=[0.65, 0.25, 0.10]) if nac == 'Cabo-Verdiana' else np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.75, 0.15, 0.10])
-        else:
-            if idade < 18:
-                doc = np.random.choice(['Certidão Nascimento', 'BI Cabo-Verdiano (Menor)'], p=[0.85, 0.15])
-            elif nac == 'Cabo-Verdiana':
-                doc = np.random.choice(['BI Cabo-Verdiano', 'CC', 'Passaporte CV'], p=[0.80, 0.12, 0.08])
-            else:
-                doc = np.random.choice(['Passaporte Estrangeiro', 'Autorização Residência CV', 'BI Estrangeiro'], p=[0.55, 0.25, 0.20])
-        tipos_doc.append(doc)
-        emissao = data_atual - timedelta(days=np.random.randint(30, 3650))
-        datas_emiss.append(emissao)
-        anos = 5 if doc in ['BI Cabo-Verdiano', 'BI Cabo-Verdiano (Menor)', 'CC'] or 'Passaporte' in doc else 15 if doc == 'Certidão Nascimento' else 2 if doc == 'Prova de Emigrante' else 1 if doc == 'Autorização Residência CV' else 5
-        validade = emissao + timedelta(days=anos*365)
-        datas_val.append(validade)
-        dias_exp = (validade - data_atual).days
-        # Reduzir documentação expirada
-        if dias_exp < 0:
-            status_doc.append('Expirado' if np.random.random() < 0.7 else 'Quase Expirando')  # Antes: sempre 'Expirado'
-        else:
-            status_doc.append('Expirado' if dias_exp < 0 else 'Quase Expirando' if dias_exp <= 60 else 'Válido')  # Antes: 90 dias
-    
-    # Reclassificação final e scores
-    riscos_finais = [classificar_risco(calcular_score(t, i, r, rend, temp, p, d)) for t, i, r, rend, temp, p, d in zip(tipos, incidentes, reclamacoes, rendimentos, tempos, peps, status_doc)]
-    
-    # Ajustar manualmente a distribuição final para garantir mais risco baixo
-    # Converter alguns clientes de risco médio para baixo
-    riscos_finais_arr = np.array(riscos_finais)
-    indices_medio = np.where(riscos_finais_arr == 'Médio')[0]
-    n_converter = int(len(indices_medio) * 0.3)  # Converter 30% dos médios para baixo
-    if n_converter > 0:
-        indices_converter = np.random.choice(indices_medio, n_converter, replace=False)
-        for idx in indices_converter:
-            riscos_finais[idx] = 'Baixo'
-    
-    scores_conf = [min((25 if d == 'Válido' else 15 if d == 'Quase Expirando' else 0) + (25 if s == 'Em dia' else 15 if s == 'A vencer' else 0) + (20 if i == 'Nenhum' else 10 if i == '1-2 incidentes' else 0) + (15 if r == 0 else 8 if r <= 2 else 0) + (15 if t == 'Residente' else 10 if t == 'Emigrante' else 0) + (10 if p == 'Não' else 0), 100) for d, s, i, r, t, p in zip(status_doc, status_atual, incidentes, reclamacoes, tipos, peps)]
-    freq_atual = ['5 anos' if r == 'Baixo' else '2 anos' if r == 'Médio' else '1 ano' for r in riscos_finais]
-    
-    # DataFrame final
-    df = pd.DataFrame({
-        'ID_Cliente': ids, 'Ilha_Balcao': ilhas, 'Idade': idades, 'Sexo': sexos,
-        'Nacionalidade_Primaria': nacs, 'Multipla_Nacionalidade': multi_nac,
-        'Tipo_Cliente': tipos, 'Pais_Residencia': paises, 'Condicao_Residente': cond_res,
-        'Rendimento_Mensal': rendimentos, 'Tipo_Conta': tipos_conta,
-        'Tempo_Relacionamento': tempos, 'Numero_Produtos': n_produtos,
-        'Atividade_Economica': atividades, 'PEP_RCA': peps,
-        'Historico_Incidentes': incidentes, 'Numero_Reclamacoes': reclamacoes,
-        'Nivel_Risco': riscos_finais, 'Data_Ultima_Atualizacao': datas_ult,
-        'Proxima_Data_Atualizacao': datas_prox, 'Status_Atualizacao': status_atual,
-        'Tipo_Documento': tipos_doc, 'Data_Emissao': datas_emiss,
-        'Data_Validade': datas_val, 'Status_Documento': status_doc,
-        'Score_Conformidade': scores_conf, 'Frequencia_Atualizacao': freq_atual
-    })
-    
-    # Variáveis binárias para a Rede Bayesiana
-    df['Documentacao_Expirada'] = df['Status_Documento'].apply(lambda x: 'Sim' if x == 'Expirado' else 'Não')
-    df['Atraso_Atualizacao'] = df['Status_Atualizacao'].apply(lambda x: 'Sim' if x == 'Atrasado' else 'Não')
-    df['Cliente_Nao_Residente'] = df['Tipo_Cliente'].apply(lambda x: 'Sim' if x == 'Não Residente' else 'Não')
     return df
 
-# =============================================================================
-# REDE BAYESIANA
-# =============================================================================
-@st.cache_resource
-def construir_rede_bayesiana():
-    """Constrói a Rede Bayesiana com estrutura e probabilidades condicionais"""
+# ---------------------------------------------------------------------------
+# REDE BAYESIANA COM HARD RULES (INCLUINDO GEOGRÁFICAS)
+# ---------------------------------------------------------------------------
+@st.cache_resource(show_spinner=False)
+def criar_rede_bayesiana():
+    """
+    Rede Bayesiana com 5 evidências. As Hard Rules são aplicadas:
+    1. Na CPD (para casos combinatórios)
+    2. Na função de inferência em lote (para regras geográficas complexas)
+    """
     modelo = DiscreteBayesianNetwork([
-        ('Documentacao_Expirada', 'Nivel_Risco'), ('Atraso_Atualizacao', 'Nivel_Risco'),
-        ('Cliente_Nao_Residente', 'Nivel_Risco'), ('PEP_RCA', 'Nivel_Risco'),
-        ('Historico_Incidentes', 'Nivel_Risco'), ('Numero_Reclamacoes', 'Nivel_Risco'),
-        ('Score_Conformidade', 'Nivel_Risco'), ('Frequencia_Atualizacao', 'Score_Conformidade')
+        ('Documentacao_Expirada', 'Nivel_Risco'),
+        ('Cliente_Nao_Residente', 'Nivel_Risco'),
+        ('PEP_RCA', 'Nivel_Risco'),
+        ('Pais_Alto_Risco', 'Nivel_Risco'),
+        ('Atividade_Grupo', 'Nivel_Risco'),
     ])
+
+    estados_atividade = ['Risco_Critico', 'Construcao', 'Outros'] 
     
     cpds = [
         TabularCPD('Documentacao_Expirada', 2, [[0.85], [0.15]], state_names={'Documentacao_Expirada': ['Não', 'Sim']}),
-        TabularCPD('Atraso_Atualizacao', 2, [[0.88], [0.12]], state_names={'Atraso_Atualizacao': ['Não', 'Sim']}),
-        TabularCPD('Cliente_Nao_Residente', 2, [[0.75], [0.25]], state_names={'Cliente_Nao_Residente': ['Não', 'Sim']}),
+        TabularCPD('Cliente_Nao_Residente', 2, [[0.85], [0.15]], state_names={'Cliente_Nao_Residente': ['Não', 'Sim']}),
         TabularCPD('PEP_RCA', 2, [[0.97], [0.03]], state_names={'PEP_RCA': ['Não', 'Sim']}),
-        TabularCPD('Historico_Incidentes', 3, [[0.75], [0.20], [0.05]], state_names={'Historico_Incidentes': ['Nenhum', '1-2 incidentes', '3+ incidentes']}),
-        TabularCPD('Numero_Reclamacoes', 3, [[0.60], [0.30], [0.10]], state_names={'Numero_Reclamacoes': ['Baixo', 'Médio', 'Alto']}),
-        TabularCPD('Frequencia_Atualizacao', 3, [[0.50], [0.35], [0.15]], state_names={'Frequencia_Atualizacao': ['5 anos', '2 anos', '1 ano']}),
-        TabularCPD('Score_Conformidade', 3, [[0.70, 0.40, 0.20], [0.25, 0.45, 0.40], [0.05, 0.15, 0.40]], evidence=['Frequencia_Atualizacao'], evidence_card=[3], state_names={'Score_Conformidade': ['Alto', 'Médio', 'Baixo'], 'Frequencia_Atualizacao': ['5 anos', '2 anos', '1 ano']})
+        TabularCPD('Pais_Alto_Risco', 2, [[0.98], [0.02]], state_names={'Pais_Alto_Risco': ['Não', 'Sim']}),
+        TabularCPD('Atividade_Grupo', 3, [[0.25], [0.20], [0.55]], state_names={'Atividade_Grupo': estados_atividade}),
     ]
-    
-    # Gera CPD do Nível de Risco (432 combinações) - CORRIGIDO
-    valores = []
-    for d in [0, 1]:      # documentacao
-        for a in [0, 1]:  # atraso
-            for nr in [0, 1]:  # nao_residente
-                for p in [0, 1]:  # pep
-                    for i in [0, 1, 2]:  # incidentes
-                        for r in [0, 1, 2]:  # reclamacoes
-                            for sc in [0, 1, 2]:  # score
-                                score_calc = d*2 + a*2 + nr*3 + p*3 + (i>0)*1 + (i>1)*2 + (r>0)*1 + (r>1)*2 + (sc>0)*1 + (sc>1)*2
-                                if score_calc <= 3:
-                                    p_vals = [0.75, 0.20, 0.05]
-                                elif score_calc <= 7:
-                                    p_vals = [0.40, 0.45, 0.15]
-                                elif score_calc <= 12:
-                                    p_vals = [0.20, 0.50, 0.30]
-                                else:
-                                    p_vals = [0.05, 0.25, 0.70]
-                                valores.append(p_vals)
-    
-    cpds.append(TabularCPD('Nivel_Risco', 3, np.array(valores).T.tolist(),
-        evidence=['Documentacao_Expirada', 'Atraso_Atualizacao', 'Cliente_Nao_Residente', 'PEP_RCA', 'Historico_Incidentes', 'Numero_Reclamacoes', 'Score_Conformidade'],
-        evidence_card=[2, 2, 2, 2, 3, 3, 3],
-        state_names={'Nivel_Risco': ['Baixo', 'Médio', 'Alto'], 'Documentacao_Expirada': ['Não', 'Sim'], 'Atraso_Atualizacao': ['Não', 'Sim'], 'Cliente_Nao_Residente': ['Não', 'Sim'], 'PEP_RCA': ['Não', 'Sim'], 'Historico_Incidentes': ['Nenhum', '1-2 incidentes', '3+ incidentes'], 'Numero_Reclamacoes': ['Baixo', 'Médio', 'Alto'], 'Score_Conformidade': ['Alto', 'Médio', 'Baixo']}))
-    
-    modelo.add_cpds(*cpds)
-    return (modelo, VariableElimination(modelo)) if modelo.check_model() else (None, None)
 
-def calcular_probabilidade_risco(inferencia, evidencias):
-    """Executa inferência probabilística P(Risco | Evidências)"""
+    valores = []
+    for doc in [0, 1]:
+        for nao_res in [0, 1]:
+            for pep in [0, 1]:
+                for fatf in [0, 1]:
+                    for ativ_idx in [0, 1, 2]:
+                        # =====================================================
+                        # HARD RULES NA CPD
+                        # =====================================================
+                        
+                        # Regra 1: PEP = Sim -> SEMPRE Alto Risco (100%)
+                        if pep == 1:
+                            probs = [0.0, 0.0, 1.0]
+                        
+                        # Regra 2: Atividade de Risco Crítico -> SEMPRE Alto Risco (100%)
+                        elif ativ_idx == 0:
+                            probs = [0.0, 0.0, 1.0]
+                        
+                        # Regra 3: Casos normais (Matemática probabilística)
+                        else:
+                            score = (doc * 3 + nao_res * 3 + fatf * 4)
+                            if ativ_idx == 1: score += 1
+                            
+                            if score <= 2: probs = [0.82, 0.14, 0.04]
+                            elif score <= 5: probs = [0.42, 0.44, 0.14]
+                            elif score <= 8: probs = [0.15, 0.55, 0.30]
+                            else: probs = [0.04, 0.18, 0.78]
+                            
+                        valores.append(probs)
+
+    cpds.append(TabularCPD(
+        'Nivel_Risco', 3, np.array(valores).T.tolist(),
+        evidence=['Documentacao_Expirada', 'Cliente_Nao_Residente', 'PEP_RCA', 'Pais_Alto_Risco', 'Atividade_Grupo'],
+        evidence_card=[2, 2, 2, 2, 3],
+        state_names={
+            'Nivel_Risco': ['Baixo', 'Médio', 'Alto'],
+            'Documentacao_Expirada': ['Não', 'Sim'],
+            'Cliente_Nao_Residente': ['Não', 'Sim'],
+            'PEP_RCA': ['Não', 'Sim'],
+            'Pais_Alto_Risco': ['Não', 'Sim'],
+            'Atividade_Grupo': estados_atividade,
+        }))
+
+    modelo.add_cpds(*cpds)
+    if modelo.check_model():
+        return modelo, VariableElimination(modelo)
+    return None, None
+
+
+def inferir_risco(inferencia, evidencias):
     try:
-        resultado = inferencia.query(variables=['Nivel_Risco'], evidence={k:v for k,v in evidencias.items() if v != 'Não informado'})
-        return {estado: resultado.values[i] for i, estado in enumerate(resultado.state_names['Nivel_Risco'])}
-    except Exception as e:
-        st.error(f"Erro na inferência: {str(e)}")
+        ev = {k: v for k, v in evidencias.items() if v not in ('Não informado', None, '')}
+        if not ev: return None
+        resultado = inferencia.query(variables=['Nivel_Risco'], evidence=ev)
+        return {estado: float(resultado.values[i]) for i, estado in enumerate(resultado.state_names['Nivel_Risco'])}
+    except Exception:
         return None
 
-def criar_grafo_rede(modelo):
-    """Visualiza a estrutura da Rede Bayesiana como grafo direcionado"""
-    G = nx.DiGraph(modelo.edges())
-    pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
+
+def aplicar_hard_rules_completas(prob, linha):
+    """
+    Aplica TODAS as Hard Rules à probabilidade calculada.
+    Devolve a probabilidade final após override.
+    """
+    prob_final = prob.copy()
     
+    # --- HARD RULE 1: PEP = Sim -> Alto Risco ---
+    if linha.get('PEP_RCA') == 'Sim':
+        prob_final = {'Baixo': 0.0, 'Médio': 0.0, 'Alto': 1.0}
+        return prob_final
+    
+    # --- HARD RULE 2: Atividade de Risco -> Alto Risco ---
+    if linha.get('Atividade_Grupo') == 'Risco_Critico':
+        prob_final = {'Baixo': 0.0, 'Médio': 0.0, 'Alto': 1.0}
+        return prob_final
+    
+    # --- HARD RULE 3 e 4: Regras Geográficas (Não Residente) ---
+    if linha.get('Cliente_Nao_Residente') == 'Sim':
+        pais = linha.get('Pais_Residencia', '')
+        
+        if is_portugal(pais):
+            # Não Residente + Portugal -> Médio
+            prob_final = {'Baixo': 0.0, 'Médio': 1.0, 'Alto': 0.0}
+            return prob_final
+        
+        if is_pais_africano(pais):
+            # Não Residente + África -> Alto
+            prob_final = {'Baixo': 0.0, 'Médio': 0.0, 'Alto': 1.0}
+            return prob_final
+    
+    return prob_final
+
+
+def aplicar_rede_em_lote(df, inferencia):
+    """
+    Aplica a rede a toda a base, com HARD RULES completas.
+    """
+    resultados = []
+    for _, linha in df.iterrows():
+        evidencias = {
+            'Documentacao_Expirada': linha.get('Documentacao_Expirada', 'Não'),
+            'Cliente_Nao_Residente': linha.get('Cliente_Nao_Residente', 'Não'),
+            'PEP_RCA': linha.get('PEP_RCA', 'Não'),
+            'Pais_Alto_Risco': linha.get('Pais_Alto_Risco', 'Não'),
+            'Atividade_Grupo': linha.get('Atividade_Grupo', 'Outros'),
+        }
+        prob = inferir_risco(inferencia, evidencias)
+        if prob:
+            # Aplicar TODAS as Hard Rules
+            prob_final = aplicar_hard_rules_completas(prob, linha)
+            classe = max(prob_final, key=prob_final.get)
+            
+            resultados.append({
+                'Classe_RB': classe,
+                'Classe_AML': linha.get('Nivel_Risco', 'Médio'),
+                'Concorda': classe == linha.get('Nivel_Risco', 'Médio'),
+                'Prob_Alto': prob_final.get('Alto', 0),
+            })
+    return pd.DataFrame(resultados)
+
+
+# ---------------------------------------------------------------------------
+# INICIALIZAÇÃO
+# ---------------------------------------------------------------------------
+df = carregar_dados()
+
+with st.sidebar:
+    st.markdown("# 📊 KYC Risk Analytics")
+    st.markdown("---")
+    pagina = st.radio("Navegação", [
+        "🏠 Visão Geral",
+        "📈 Risco & Distribuição",
+        "📄 Documentação",
+        "👥 Perfil Demográfico",
+        "🌍 Análise Geográfica",
+        "🎯 Segmentação de Risco",
+        "🧠 Rede Bayesiana"
+    ], label_visibility="collapsed")
+    
+    st.markdown("---")
+    st.markdown("**Filtros Globais**")
+    filtro_risco = st.multiselect("Nível de Risco", ['Baixo', 'Médio', 'Alto'], default=['Baixo', 'Médio', 'Alto'])
+    filtro_tipo = st.multiselect("Tipo de Cliente", df['Tipo_Cliente'].dropna().unique().tolist(), default=df['Tipo_Cliente'].dropna().unique().tolist())
+
+df_f = df[df['Nivel_Risco'].isin(filtro_risco) & df['Tipo_Cliente'].isin(filtro_tipo)].copy()
+
+if df_f.empty:
+    st.warning("Nenhum cliente corresponde aos filtros.")
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# PÁGINAS
+# ---------------------------------------------------------------------------
+if pagina == "🏠 Visão Geral":
+    st.markdown('<div class="section-title">Visão Geral da Carteira</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Panorama global dos indicadores de risco operacional</div>', unsafe_allow_html=True)
+    
+    total = len(df_f)
+    pct_alto = (df_f['Nivel_Risco'] == 'Alto').mean() * 100
+    n_doc_exp = (df_f['Status_Documento'] == 'Expirado').sum()
+    n_pep = (df_f['PEP_RCA'] == 'Sim').sum()
+    
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Total de Clientes</div><div class="kpi-value">{total:,}</div><div class="kpi-extra">carteira analisada</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Risco Alto</div><div class="kpi-value">{pct_alto:.1f}%</div><div class="kpi-extra">{int(total*pct_alto/100):,} clientes</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Docs Expirados</div><div class="kpi-value">{n_doc_exp:,}</div><div class="kpi-extra">{n_doc_exp/total*100:.1f}% da carteira</div></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="kpi-card"><div class="kpi-title">PEP/RCA</div><div class="kpi-value">{n_pep:,}</div><div class="kpi-extra">{n_pep/total*100:.1f}% da carteira</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Distribuição Global de Risco**")
+        contagem = df_f['Nivel_Risco'].value_counts().reset_index()
+        contagem.columns = ['Risco', 'N']
+        fig1 = go.Figure(data=[go.Pie(labels=contagem['Risco'], values=contagem['N'], hole=0.6, marker=dict(colors=[CORES[r] for r in contagem['Risco']], line=dict(color='white', width=3)), textinfo='percent+label', textposition='outside')])
+        fig1.update_layout(height=380, showlegend=False, margin=dict(t=30, b=30))
+        st.plotly_chart(fig1, use_container_width=True)
+    with c2:
+        st.markdown("**Composição por Tipo de Cliente**")
+        contagem_tipo = df_f['Tipo_Cliente'].value_counts().reset_index()
+        contagem_tipo.columns = ['Tipo', 'N']
+        fig2 = px.bar(contagem_tipo, x='Tipo', y='N', color='Tipo', text='N', color_discrete_sequence=px.colors.qualitative.Set2)
+        fig2.update_traces(textposition='outside')
+        fig2.update_layout(height=380, showlegend=False, xaxis_title="", yaxis_title="Nº de Clientes", plot_bgcolor='white')
+        st.plotly_chart(fig2, use_container_width=True)
+    
+    st.markdown(f'<div class="analise-box"><strong>📝 Análise:</strong> A carteira tem <strong>{total:,} clientes</strong>, com <strong>{pct_alto:.1f}%</strong> em risco alto. A maioria ({df_f["Tipo_Cliente"].value_counts().index[0]}) concentra {df_f["Tipo_Cliente"].value_counts().values[0]/total*100:.1f}% da carteira.</div>', unsafe_allow_html=True)
+
+elif pagina == "📈 Risco & Distribuição":
+    st.markdown('<div class="section-title">Análise de Distribuição de Risco</div>', unsafe_allow_html=True)
+    st.markdown("**Risco por Tipo de Cliente**")
+    tabela1 = pd.crosstab(df_f['Tipo_Cliente'], df_f['Nivel_Risco'])
+    for r in ['Baixo', 'Médio', 'Alto']:
+        if r not in tabela1.columns: tabela1[r] = 0
+    tabela1 = tabela1[['Baixo', 'Médio', 'Alto']]
+    fig3 = go.Figure()
+    for risco in ['Baixo', 'Médio', 'Alto']:
+        fig3.add_trace(go.Bar(name=risco, x=tabela1.index, y=tabela1[risco], marker_color=CORES[risco], text=tabela1[risco].apply(lambda v: f'{v:,}' if v > 0 else ''), textposition='inside', textfont=dict(color='white', size=11)))
+    fig3.update_layout(barmode='stack', height=400, plot_bgcolor='white', xaxis_title="Tipo de Cliente", yaxis_title="Nº de Clientes", legend_title="Nível de Risco", margin=dict(t=20))
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Distribuição de Risco por Faixa Etária**")
+        if 'Faixa_Etaria' in df_f.columns:
+            tabela2 = pd.crosstab(df_f['Faixa_Etaria'], df_f['Nivel_Risco'])
+            for r in ['Baixo', 'Médio', 'Alto']:
+                if r not in tabela2.columns: tabela2[r] = 0
+            tabela2 = tabela2[['Baixo', 'Médio', 'Alto']]
+            fig4 = go.Figure()
+            for risco in ['Baixo', 'Médio', 'Alto']:
+                fig4.add_trace(go.Bar(name=risco, x=tabela2.index, y=tabela2[risco], marker_color=CORES[risco]))
+            fig4.update_layout(barmode='stack', height=380, plot_bgcolor='white', xaxis_title="Faixa Etária", yaxis_title="Nº de Clientes", showlegend=False, margin=dict(t=20))
+            st.plotly_chart(fig4, use_container_width=True)
+    with c2:
+        st.markdown("**Risco por Sexo**")
+        tabela3 = pd.crosstab(df_f['Sexo'], df_f['Nivel_Risco'])
+        for r in ['Baixo', 'Médio', 'Alto']:
+            if r not in tabela3.columns: tabela3[r] = 0
+        tabela3 = tabela3[['Baixo', 'Médio', 'Alto']]
+        fig5 = go.Figure()
+        for risco in ['Baixo', 'Médio', 'Alto']:
+            fig5.add_trace(go.Bar(name=risco, x=tabela3.index, y=tabela3[risco], marker_color=CORES[risco]))
+        fig5.update_layout(barmode='group', height=380, plot_bgcolor='white', xaxis_title="Sexo", yaxis_title="Nº de Clientes", legend_title="Risco", margin=dict(t=20))
+        st.plotly_chart(fig5, use_container_width=True)
+
+elif pagina == "📄 Documentação":
+    st.markdown('<div class="section-title">Gestão Documental</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Válidos</div><div class="kpi-value">{(df_f["Status_Documento"]=="Válido").sum():,}</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Quase Expirando</div><div class="kpi-value">{(df_f["Status_Documento"]=="Quase Expirando").sum():,}</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Expirados</div><div class="kpi-value">{(df_f["Status_Documento"]=="Expirado").sum():,}</div></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Vitalícios</div><div class="kpi-value">{(df_f["Status_Documento"]=="Vitalício").sum():,}</div></div>', unsafe_allow_html=True)
+    st.markdown("---")
+    c1, c2 = st.columns([1, 1.5])
+    with c1:
+        contagem = df_f['Status_Documento'].value_counts().reset_index()
+        contagem.columns = ['Status', 'N']
+        fig6 = go.Figure(data=[go.Pie(labels=contagem['Status'], values=contagem['N'], hole=0.55, marker=dict(colors=[CORES_DOC.get(s, '#95A5A6') for s in contagem['Status']], line=dict(color='white', width=3)), textinfo='percent', textposition='outside')])
+        fig6.update_layout(height=400, showlegend=True, legend=dict(orientation='h', y=-0.2), margin=dict(t=20))
+        st.plotly_chart(fig6, use_container_width=True)
+    with c2:
+        df_exp = df_f[df_f['Status_Documento'] == 'Expirado']
+        if not df_exp.empty:
+            contagem_exp = df_exp['Tipo_Cliente'].value_counts().reset_index()
+            contagem_exp.columns = ['Tipo', 'N']
+            fig7 = px.bar(contagem_exp, x='N', y='Tipo', orientation='h', color='N', color_continuous_scale='Reds', text='N')
+            fig7.update_traces(textposition='outside')
+            fig7.update_layout(height=400, plot_bgcolor='white', xaxis_title="Nº de Documentos Expirados", yaxis_title="", coloraxis_showscale=False, margin=dict(t=20))
+            st.plotly_chart(fig7, use_container_width=True)
+
+elif pagina == "👥 Perfil Demográfico":
+    st.markdown('<div class="section-title">Perfil Demográfico</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Idade Média</div><div class="kpi-value">{df_f["Idade"].mean():.0f} anos</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Cliente Mais Velho</div><div class="kpi-value">{df_f["Idade"].max():.0f} anos</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Mulheres</div><div class="kpi-value">{(df_f["Sexo"]=="Feminino").mean()*100:.1f}%</div></div>', unsafe_allow_html=True)
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        if 'Faixa_Etaria' in df_f.columns:
+            tabela = pd.crosstab(df_f['Faixa_Etaria'], df_f['Nivel_Risco'])
+            for r in ['Baixo', 'Médio', 'Alto']:
+                if r not in tabela.columns: tabela[r] = 0
+            tabela = tabela[['Baixo', 'Médio', 'Alto']]
+            fig10 = go.Figure()
+            for risco in ['Baixo', 'Médio', 'Alto']:
+                fig10.add_trace(go.Bar(name=risco, x=tabela.index, y=tabela[risco], marker_color=CORES[risco]))
+            fig10.update_layout(barmode='stack', height=380, plot_bgcolor='white', xaxis_title="Faixa Etária", yaxis_title="Nº de Clientes", showlegend=False, margin=dict(t=20))
+            st.plotly_chart(fig10, use_container_width=True)
+    with c2:
+        contagem_ativ = df_f['Atividade_Economica'].value_counts().head(10).reset_index()
+        contagem_ativ.columns = ['Atividade', 'N']
+        fig11 = px.bar(contagem_ativ, x='N', y='Atividade', orientation='h', text='N', color='N', color_continuous_scale='Teal')
+        fig11.update_traces(textposition='outside')
+        fig11.update_layout(height=380, plot_bgcolor='white', xaxis_title="", yaxis_title="", coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'}, margin=dict(t=20))
+        st.plotly_chart(fig11, use_container_width=True)
+
+elif pagina == "🌍 Análise Geográfica":
+    st.markdown('<div class="section-title">Análise Geográfica do Risco</div>', unsafe_allow_html=True)
+    paises_agg = df_f.groupby('Pais_Residencia').agg(Total=('ID_Cliente', 'count'), Pct_Alto=('Nivel_Risco', lambda x: (x == 'Alto').mean() * 100)).reset_index()
+    paises_agg['ISO'] = paises_agg['Pais_Residencia'].map(PAIS_PARA_ISO)
+    paises_agg = paises_agg.dropna(subset=['ISO'])
+    if not paises_agg.empty:
+        fig_map = px.choropleth(paises_agg, locations='ISO', color='Pct_Alto', hover_name='Pais_Residencia', hover_data={'Total': True, 'Pct_Alto': ':.1f'}, color_continuous_scale='RdYlGn_r', range_color=[0, 100], labels={'Pct_Alto': '% Risco Alto', 'Total': 'Clientes'})
+        fig_map.update_layout(height=500, geo=dict(showframe=False, showcoastlines=True, coastlinecolor='#ccc', projection_type='natural earth'), margin=dict(t=20, b=20, l=0, r=0), coloraxis_colorbar=dict(title="% Risco"))
+        st.plotly_chart(fig_map, use_container_width=True)
+    st.markdown("---")
+    st.markdown("**Top 15 Países por Número de Clientes**")
+    top_paises = df_f['Pais_Residencia'].value_counts().head(15).reset_index()
+    top_paises.columns = ['País', 'N']
+    fig12 = px.bar(top_paises, x='N', y='País', orientation='h', text='N', color='N', color_continuous_scale='Blues')
+    fig12.update_traces(textposition='outside')
+    fig12.update_layout(height=500, plot_bgcolor='white', xaxis_title="Nº de Clientes", yaxis_title="", coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'}, margin=dict(t=20))
+    st.plotly_chart(fig12, use_container_width=True)
+
+elif pagina == "🎯 Segmentação de Risco":
+    st.markdown('<div class="section-title">Segmentação Avançada de Risco</div>', unsafe_allow_html=True)
+    st.markdown("**Mapa de Calor: Risco por Tipo de Cliente e PEP/RCA**")
+    if 'PEP_RCA' in df_f.columns:
+        df_f['Categoria'] = df_f['Tipo_Cliente'] + ' / ' + df_f['PEP_RCA']
+        tabela = pd.crosstab(df_f['Categoria'], df_f['Nivel_Risco'])
+        for r in ['Baixo', 'Médio', 'Alto']:
+            if r not in tabela.columns: tabela[r] = 0
+        tabela = tabela[['Baixo', 'Médio', 'Alto']]
+        tabela['_Total'] = tabela.sum(axis=1)
+        tabela = tabela[tabela['_Total'] >= 5]
+        tabela = tabela.drop(columns='_Total').sort_values('Alto', ascending=False).head(15)
+        fig15 = go.Figure(data=go.Heatmap(z=tabela.values, x=tabela.columns, y=tabela.index, colorscale=[[0, '#EBF5FB'], [0.5, '#F39C12'], [1, '#E74C3C']], text=tabela.values, texttemplate="%{text}", textfont=dict(size=11, color='black'), showscale=True, colorbar=dict(title="Nº")))
+        fig15.update_layout(height=500, plot_bgcolor='white', xaxis_title="Nível de Risco", yaxis_title="", margin=dict(t=20, l=150))
+        st.plotly_chart(fig15, use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# PÁGINA 7: REDE BAYESIANA (COM TODAS AS HARD RULES)
+# ---------------------------------------------------------------------------
+elif pagina == "🧠 Rede Bayesiana":
+    st.markdown('<div class="section-title">Modelação Probabilística (Rede Bayesiana)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Inferência com regras determinísticas de negócio (Hard Rules)</div>', unsafe_allow_html=True)
+    
+    modelo, inferencia = criar_rede_bayesiana()
+    
+    if modelo is None:
+        st.error("Erro na construção do modelo Bayesiano.")
+        st.stop()
+    
+    # --- CAIXA DE HARD RULES ---
+    st.markdown(f"""
+    <div class="analise-box rule">
+        <strong>⚠️ REGRAS DETERMINÍSTICAS (HARD RULES) DO MODELO:</strong><br>
+        <span class="hard-rule-badge">REGRA 1</span> Se <strong>PEP/RCA = Sim</strong> → <strong>Risco Alto</strong> (100%).<br>
+        <span class="hard-rule-badge">REGRA 2</span> Se <strong>Atividade = Imobiliária/Financeira/Jogo</strong> → <strong>Risco Alto</strong> (100%).<br>
+        <span class="hard-rule-badge orange">REGRA 3</span> Se <strong>Não Residente + Portugal</strong> → <strong>Risco Médio</strong> (regra geográfica).<br>
+        <span class="hard-rule-badge">REGRA 4</span> Se <strong>Não Residente + País Africano</strong> → <strong>Risco Alto</strong> (regra geográfica).<br>
+        <br>
+        Estas regras <strong>sobrepõem-se</strong> à inferência probabilística. A presença de PEP ou atividade de risco crítico força sempre Alto Risco. As regras geográficas aplicam-se apenas a Não Residentes.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # --- GRÁFICO DO GRAFO (DAG) ---
+    st.markdown("**Estrutura do Grafo (DAG)**")
+    G = nx.DiGraph(modelo.edges())
+    pos = nx.spring_layout(G, k=2.5, iterations=100, seed=42)
     edge_x, edge_y = [], []
     for u, v in G.edges():
-        x0, y0, x1, y1 = *pos[u], *pos[v]
+        x0, y0 = pos[u]; x1, y1 = pos[v]
         edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
-    
-    node_x, node_y, node_text, node_color = [], [], [], []
-    cores_no = {'Nivel_Risco': '#FF6B6B', 'Score_Conformidade': '#4ECDC4', 'Cliente_Nao_Residente': '#FFA07A', 'PEP_RCA': '#FFA07A'}
+    node_x, node_y, node_text, node_color, node_size = [], [], [], [], []
     for node in G.nodes():
         node_x.append(pos[node][0]); node_y.append(pos[node][1])
         node_text.append(node.replace('_', ' '))
-        node_color.append(cores_no.get(node, '#95E1D3'))
+        node_color.append('#F39C12' if node == 'Nivel_Risco' else '#1F3A5F')
+        node_size.append(80 if node == 'Nivel_Risco' else 55)
+    fig_rb = go.Figure()
+    fig_rb.add_trace(go.Scatter(x=edge_x, y=edge_y, line=dict(width=2, color='#B0BEC5'), mode='lines', hoverinfo='none'))
+    fig_rb.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition='top center', textfont=dict(size=11, color='#1F3A5F'), marker=dict(size=node_size, color=node_color, line=dict(width=3, color='white'))))
+    fig_rb.update_layout(height=500, plot_bgcolor='white', paper_bgcolor='white', xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), margin=dict(t=40, b=20, l=20, r=20), showlegend=False)
+    st.plotly_chart(fig_rb, use_container_width=True)
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=edge_x, y=edge_y, line=dict(width=2, color='#888'), mode='lines'))
-    fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition="top center", marker=dict(size=40, color=node_color, line=dict(width=2, color='DarkSlateGrey'))))
-    fig.update_layout(title='Estrutura da Rede Bayesiana', showlegend=False, xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), height=500)
-    return fig
+    st.markdown("---")
+    
+    # --- SIMULADOR INTERATIVO ---
+    st.markdown("**Simulador de Cenários (Inferência Preditiva)**")
+    st.caption("Experimente as regras: PEP=Sim → Alto; Atividade Imobiliária → Alto; Não Residente + Portugal → Médio; Não Residente + África → Alto.")
 
-def calcular_score_manual(tipo, rend, incidente, doc_exp, freq, tempo, prod, reclam, pais=None, ativ=None, pep='Não', multi_nac=None):
-    """Matriz de Risco: cálculo determinístico com 12 fatores para avaliação manual"""
-    score = 0
-    fatores = []
+    lista_todas_atividades = sorted(df['Atividade_Economica'].dropna().astype(str).unique().tolist())
+    lista_paises = sorted(df['Pais_Residencia'].dropna().astype(str).unique().tolist())
     
-    pesos_tipo = {'Não Residente': (4, "Cliente Não Residente (+4)"), 'Emigrante': (3, "Cliente Emigrante (+3)"), 'Residente': (0, None)}
-    s, f = pesos_tipo[tipo]; score += s; f and fatores.append(f)
-    
-    if pep == 'Sim': score += 4; fatores.append("PEP/RCA (+4)")
-    
-    if rend < 15000: score += 3; fatores.append("Rendimento muito baixo (+3)")
-    elif rend < 30000: score += 2; fatores.append("Rendimento baixo (+2)")
-    elif rend < 50000: score += 1
-    
-    pesos_inc = {'3+ incidentes': (4, "Histórico crítico de incidentes (+4)"), '1-2 incidentes': (2, "Histórico de incidentes (+2)"), 'Nenhum': (0, None)}
-    s, f = pesos_inc[incidente]; score += s; f and fatores.append(f)
-    
-    if doc_exp == 'Sim': score += 3; fatores.append("Documentação expirada (+3)")
-    score += 2 if freq == '1 ano' else 1 if freq == '2 anos' else 0
-    score += 2 if tempo < 1 else 1 if tempo < 3 else 0
-    if prod < 2: score += 1; fatores.append("Poucos produtos (+1)")
-    
-    pesos_rec = {'Alto (3+)': (3, "Múltiplas reclamações (+3)"), 'Médio (1-2)': (2, "Reclamações registradas (+2)"), 'Baixo (0)': (0, None)}
-    s, f = pesos_rec[reclam]; score += s; f and fatores.append(f)
-    
-    paises_alto, paises_medio = ['Nigéria', 'China', 'Rússia', 'Irã', 'Coreia do Norte'], ['Angola', 'Guiné-Bissau', 'Senegal', 'Brasil']
-    if pais:
-        if any(p in pais for p in paises_alto): score += 2; fatores.append(f"País de alto risco: {pais} (+2)")
-        elif any(p in pais for p in paises_medio): score += 1; fatores.append(f"País de atenção: {pais} (+1)")
-    
-    ativ_alto, ativ_medio = ['Atividades financeiras e de seguros', 'Atividades imobiliárias', 'Administração pública e defesa', 'Informação e comunicação'], ['Comércio por grosso e a retalho', 'Atividades de construção', 'Alojamento e restauração', 'Outras atividades de serviços']
-    if ativ:
-        if any(a in ativ for a in ativ_alto): score += 2; fatores.append(f"Atividade de alto risco: {ativ} (+2)")
-        elif any(a in ativ for a in ativ_medio): score += 1
-    
-    if multi_nac and '/' in str(multi_nac): score += 1; fatores.append("Múltipla nacionalidade (+1)")
-    
-    classif = 'Baixo' if score <= 6 else 'Médio' if score <= 14 else 'Alto'
-    return score, classif, min(score/25, 0.95), fatores
+    c1, c2, c3 = st.columns(3)
+    opcoes_binarias = ['Não informado', 'Não', 'Sim']
 
-# =============================================================================
-# INTERFACE PRINCIPAL
-# =============================================================================
-def main():
-    st.title("🏦 Dashboard de Gestão de Risco Operacional - KYC")
-    st.markdown("**TFC Matemática Aplicada** | *Business Intelligence e Modelagem Probabilística*")
-    st.markdown("**Banco Comercial de Cabo Verde - Moeda: CVE**")
-    st.divider()
-    
-    with st.sidebar:
-        st.header("⚙️ Configurações")
-        n_clientes = st.slider("Número de Clientes", 1000, 10000, 5000, 1000)
-        if st.button("🔄 Regenerar Dados", type="primary"):
-            st.cache_data.clear()
-            st.rerun()
-        st.divider()
-        with st.expander("📚 Metodologia"):
-            st.markdown("- **Rede Bayesiana** (pgmpy): Inferência probabilística\n- **Framework KYC**: Classificação determinística\n- **Contexto CV**: 9 ilhas, 3 tipos de clientes")
-        st.caption("© 2024 - TFC Matemática Aplicada")
-    
-    with st.spinner("Gerando dados..."): df = gerar_base_clientes(n_clientes)
-    with st.spinner("Construindo modelo..."): modelo, inferencia = construir_rede_bayesiana()
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Visão Executiva", "🔄 Monitorização KYC", "📋 Gestão Documental", "🧠 Rede Bayesiana", "⚖️ Matriz de Risco"])
-    
-    # ========== ABA 1: VISÃO EXECUTIVA ==========
-    with tab1:
-        st.header("Visão Executiva")
-        cols = st.columns(5)
-        metricas = [
-            ("Total de Clientes", f"{len(df):,}", None),
-            ("% Risco Alto", f"{(df['Nivel_Risco'] == 'Alto').mean()*100:.1f}%", "Clientes classificados como risco alto"),
-            ("% Docs Expirados", f"{(df['Status_Documento'] == 'Expirado').mean()*100:.1f}%", "Documentos fora da validade"),
-            ("% Não Residentes", f"{(df['Tipo_Cliente'] == 'Não Residente').mean()*100:.1f}%", "Clientes não residentes"),
-            ("Score Médio", f"{df['Score_Conformidade'].mean():.1f}/100", "Média do score de conformidade")
-        ]
-        for col, (t, v, h) in zip(cols, metricas):
-            with col: st.metric(t, v, help=h)
-        
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(criar_pizza_risco(df, 'Nivel_Risco', 'Distribuição de Risco'), use_container_width=True)
-            ilha_df = df.groupby('Ilha_Balcao').size().reset_index(name='N')
-            fig_ilha = px.bar(ilha_df, x='Ilha_Balcao', y='N', title='Clientes por Ilha', color='Ilha_Balcao', text='N')
-            fig_ilha.update_traces(textposition='outside')
-            st.plotly_chart(fig_ilha, use_container_width=True)
-        with c2:
-            st.plotly_chart(criar_grafico_risco_barras(df, 'Tipo_Cliente', 'Risco por Tipo de Cliente'), use_container_width=True)
-            st.plotly_chart(px.pie(df, names='Tipo_Cliente', title='Distribuição por Tipo de Cliente', hole=0.3, color_discrete_map={'Residente': '#2ECC71', 'Emigrante': '#F39C12', 'Não Residente': '#E74C3C'}), use_container_width=True)
-        
-        st.divider()
-        c3, c4 = st.columns(2)
-        with c3:
-            df['Faixa_Etaria'] = pd.cut(df['Idade'], bins=[0, 30, 45, 60, 100], labels=['18-30', '31-45', '46-60', '60+'])
-            st.plotly_chart(criar_grafico_risco_barras(df, 'Faixa_Etaria', 'Risco por Faixa Etária', stacked=True), use_container_width=True)
-        with c4:
-            fig_score = px.histogram(df, x='Score_Conformidade', nbins=20, title='Distribuição do Score de Conformidade', color_discrete_sequence=['#3498DB'])
-            fig_score.add_vline(x=df['Score_Conformidade'].mean(), line_dash="dash", annotation_text=f"Média: {df['Score_Conformidade'].mean():.1f}")
-            st.plotly_chart(fig_score, use_container_width=True)
-        
-        st.divider()
-        c5, c6 = st.columns(2)
-        with c5: st.plotly_chart(criar_grafico_risco_barras(df, 'Ilha_Balcao', 'Risco por Ilha'), use_container_width=True)
-        with c6: st.plotly_chart(criar_grafico_risco_barras(df, 'PEP_RCA', 'Risco por Status PEP/RCA'), use_container_width=True)
-    
-    # ========== ABA 2: MONITORIZAÇÃO KYC ==========
-    with tab2:
-        st.header("Monitorização KYC")
-        f1, f2, f3 = st.columns(3)
-        with f1: filtro_risco = st.multiselect("Nível de Risco", CONFIG['RISCO']['ordem'], default=CONFIG['RISCO']['ordem'])
-        with f2: filtro_status = st.multiselect("Status", df['Status_Atualizacao'].unique(), default=['A vencer', 'Atrasado'])
-        with f3: filtro_ilha = st.multiselect("Ilha", df['Ilha_Balcao'].unique(), default=df['Ilha_Balcao'].unique())
-        
-        df_filt = df[(df['Nivel_Risco'].isin(filtro_risco)) & (df['Status_Atualizacao'].isin(filtro_status)) & (df['Ilha_Balcao'].isin(filtro_ilha))].copy()
-        df_filt['Dias_para_Vencer'] = (df_filt['Proxima_Data_Atualizacao'] - datetime(2024, 12, 1)).dt.days
-        
-        st.subheader("Clientes que Requerem Atenção")
-        st.dataframe(df_filt[['ID_Cliente', 'Ilha_Balcao', 'Nivel_Risco', 'Tipo_Cliente', 'Status_Atualizacao', 'Proxima_Data_Atualizacao', 'Dias_para_Vencer', 'Score_Conformidade', 'PEP_RCA']].sort_values('Dias_para_Vencer'), use_container_width=True, hide_index=True)
-        
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            df['Mes_Vencimento'] = df['Proxima_Data_Atualizacao'].dt.to_period('M').astype(str)
-            timeline = df.groupby(['Mes_Vencimento', 'Ilha_Balcao']).size().reset_index(name='Count')
-            st.plotly_chart(px.line(timeline, x='Mes_Vencimento', y='Count', color='Ilha_Balcao', title='Timeline de Vencimentos', markers=True), use_container_width=True)
-        with c2:
-            status_tipo = df.groupby(['Tipo_Cliente', 'Status_Atualizacao']).size().unstack(fill_value=0)
-            fig = go.Figure([go.Bar(name=s, x=status_tipo.index, y=status_tipo[s], marker_color={'Em dia': '#2ECC71', 'A vencer': '#F39C12', 'Atrasado': '#E74C3C'}[s]) for s in ['Em dia', 'A vencer', 'Atrasado'] if s in status_tipo.columns])
-            fig.update_layout(title='Status de Atualização por Tipo', barmode='group')
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # ========== ABA 3: GESTÃO DOCUMENTAL ==========
-    with tab3:
-        st.header("Gestão Documental")
-        cols = st.columns(4)
-        metricas_doc = [
-            ("Total Documentos", f"{len(df):,}", None),
-            ("% Válidos", f"{(df['Status_Documento'] == 'Válido').mean()*100:.1f}%", None),
-            ("% Quase Expirando", f"{(df['Status_Documento'] == 'Quase Expirando').mean()*100:.1f}%", None),
-            ("% Expirados", f"{(df['Status_Documento'] == 'Expirado').mean()*100:.1f}%", f"{(df['Status_Documento'] == 'Expirado').sum()} docs")
-        ]
-        for col, (t, v, d) in zip(cols, metricas_doc):
-            with col: st.metric(t, v, delta=d)
-        
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            doc_status = df.groupby(['Tipo_Documento', 'Status_Documento']).size().unstack(fill_value=0)
-            fig = go.Figure([go.Bar(name=s, x=doc_status.index, y=doc_status[s], marker_color={'Válido': '#2ECC71', 'Quase Expirando': '#F39C12', 'Expirado': '#E74C3C'}[s]) for s in ['Válido', 'Quase Expirando', 'Expirado'] if s in doc_status.columns])
-            fig.update_layout(title='Status por Tipo de Documento', barmode='stack', xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            st.plotly_chart(px.bar(df.groupby(['Tipo_Cliente', 'Tipo_Documento']).size().reset_index(name='Count'), x='Tipo_Cliente', y='Count', color='Tipo_Documento', title='Documentos por Tipo de Cliente', barmode='stack'), use_container_width=True)
-        
-        st.divider()
-        st.subheader("Documentos Expirados")
-        f1, f2 = st.columns(2)
-        with f1: filtro_ilha_d = st.multiselect("Ilha", df['Ilha_Balcao'].unique(), default=df['Ilha_Balcao'].unique(), key='ilha_doc')
-        with f2: filtro_tipo_d = st.multiselect("Tipo Cliente", df['Tipo_Cliente'].unique(), default=df['Tipo_Cliente'].unique(), key='tipo_doc')
-        
-        expirados = df[(df['Status_Documento'] == 'Expirado') & (df['Ilha_Balcao'].isin(filtro_ilha_d)) & (df['Tipo_Cliente'].isin(filtro_tipo_d))]
-        st.dataframe(expirados[['ID_Cliente', 'Ilha_Balcao', 'Tipo_Cliente', 'Tipo_Documento', 'Data_Validade', 'Nivel_Risco', 'PEP_RCA']].sort_values('Data_Validade'), use_container_width=True, hide_index=True)
-        st.download_button("📥 Download CSV", expirados.to_csv(index=False).encode('utf-8'), f"expirados_{datetime.now():%Y%m%d}.csv", "text/csv")
-    
-    # ========== ABA 4: REDE BAYESIANA ==========
-    with tab4:
-        st.header("Rede Bayesiana")
-        st.markdown("Modelagem probabilística com **Eliminação de Variáveis**")
-        if modelo: st.plotly_chart(criar_grafo_rede(modelo), use_container_width=True)
-        
-        st.divider()
-        st.subheader("Inferência Dinâmica")
-        opcoes = ['Não informado', 'Não', 'Sim']
-        opcoes_inc = ['Não informado', 'Nenhum', '1-2 incidentes', '3+ incidentes']
-        opcoes_rec = ['Não informado', 'Baixo', 'Médio', 'Alto']
-        opcoes_freq = ['Não informado', '5 anos', '2 anos', '1 ano']
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            ev_doc = st.selectbox("Documentação Expirada", opcoes)
-            ev_atr = st.selectbox("Atraso na Atualização", opcoes)
-            ev_nao_res = st.selectbox("Cliente Não Residente", opcoes)
-        with c2:
-            ev_pep = st.selectbox("PEP/RCA", opcoes)
-            ev_inc = st.selectbox("Histórico de Incidentes", opcoes_inc)
-            ev_rec = st.selectbox("Número de Reclamações", opcoes_rec)
-        with c3:
-            ev_score = st.selectbox("Score de Conformidade", opcoes_rec)
-            ev_freq = st.selectbox("Frequência de Atualização", opcoes_freq)
-        
-        evidencias = {k: v for k, v in [
-            ('Documentacao_Expirada', ev_doc), ('Atraso_Atualizacao', ev_atr),
-            ('Cliente_Nao_Residente', ev_nao_res), ('PEP_RCA', ev_pep),
-            ('Historico_Incidentes', ev_inc), ('Numero_Reclamacoes', ev_rec),
-            ('Score_Conformidade', ev_score), ('Frequencia_Atualizacao', ev_freq)
-        ] if v != 'Não informado'}
-        
-        if st.button("🔍 Calcular Probabilidades", type="primary") and evidencias and inferencia:
-            prob = calcular_probabilidade_risco(inferencia, evidencias)
-            if prob:
-                cols = st.columns(3)
-                for col, risco in zip(cols, CONFIG['RISCO']['ordem']):
-                    with col:
-                        st.metric(f"P(Risco = {risco})", f"{prob[risco]:.2%}", delta="⚠️ Atenção" if risco == 'Alto' and prob[risco] > 0.5 else None)
-                fig = go.Figure(go.Bar(x=list(prob.keys()), y=list(prob.values()), marker_color=[CONFIG['RISCO']['cores'][r] for r in CONFIG['RISCO']['ordem']]))
-                fig.update_layout(title='Distribuição de Probabilidade', yaxis_range=[0,1])
-                st.plotly_chart(fig, use_container_width=True)
-    
-    # ========== ABA 5: MATRIZ DE RISCO ==========
-    with tab5:
-        st.header("Matriz de Risco do Cliente - Modelo Paramétrico")
-        modo = st.radio("Modo de avaliação:", ["Novo Cliente", "Cliente Existente"], horizontal=True)
-        
-        if 'matriz_inputs' not in st.session_state: 
-            st.session_state.matriz_inputs = {}
-        
-        if modo == "Cliente Existente":
-            col_busca, col_btn = st.columns([3, 1])
-            with col_busca: 
-                cliente_id = st.selectbox("Selecione o Cliente", df['ID_Cliente'].tolist(), key='sel_cliente')
-            with col_btn:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🔄 Carregar Dados", type="primary"):
-                    cli = df[df['ID_Cliente'] == cliente_id].iloc[0]
-                    st.session_state.matriz_inputs = {
-                        'tipo': cli['Tipo_Cliente'], 
-                        'rend': int(cli['Rendimento_Mensal']), 
-                        'hist': cli['Historico_Incidentes'],
-                        'doc': 'Sim' if cli['Status_Documento'] == 'Expirado' else 'Não', 
-                        'freq': cli['Frequencia_Atualizacao'],
-                        'tempo': int(cli['Tempo_Relacionamento']), 
-                        'prod': int(cli['Numero_Produtos']),
-                        'rec': 'Baixo (0)' if cli['Numero_Reclamacoes'] == 0 else 'Médio (1-2)' if cli['Numero_Reclamacoes'] <= 2 else 'Alto (3+)',
-                        'pais': cli['Pais_Residencia'], 
-                        'ativ': cli['Atividade_Economica'], 
-                        'pep': cli['PEP_RCA'], 
-                        'nac': cli['Multipla_Nacionalidade']
-                    }
-                    st.success(f"Cliente {cliente_id} carregado!")
-        
-        st.divider()
-        st.subheader("Parâmetros de Avaliação")
-        inp = st.session_state.matriz_inputs
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            tipo = st.selectbox("Tipo de Cliente *", ['Residente', 'Emigrante', 'Não Residente'], 
-                               index=['Residente', 'Emigrante', 'Não Residente'].index(inp.get('tipo', 'Residente')))
-            rend = st.number_input("Rendimento Mensal (CVE) *", 0, 1000000, inp.get('rend', 25000), 1000)
-            st.caption(f"≈ €{rend/110:.0f} (taxa: 110 CVE/€)")
-        with c2:
-            doc = st.selectbox("Documento Expirado *", ['Não', 'Sim'], 
-                              index=['Não', 'Sim'].index(inp.get('doc', 'Não')))
-            freq = st.selectbox("Frequência Atualização *", ['5 anos', '2 anos', '1 ano'], 
-                               index=['5 anos', '2 anos', '1 ano'].index(inp.get('freq', '5 anos')))
-            tempo = st.number_input("Tempo Relacionamento (anos) *", 0, 50, inp.get('tempo', 5))
-        with c3:
-            rec = st.selectbox("Reclamações *", ['Baixo (0)', 'Médio (1-2)', 'Alto (3+)'], 
-                              index=['Baixo (0)', 'Médio (1-2)', 'Alto (3+)'].index(inp.get('rec', 'Baixo (0)')))
-            pais = st.text_input("País de Residência", inp.get('pais', 'Cabo Verde'))
-            ativ = st.selectbox("Atividade Econômica", CONFIG['ATIVIDADES'], 
-                               index=CONFIG['ATIVIDADES'].index(inp.get('ativ', 'Outra')) if inp.get('ativ') in CONFIG['ATIVIDADES'] else len(CONFIG['ATIVIDADES'])-1)
-        
-        c4, c5, c6 = st.columns(3)
-        with c4:
-            hist = st.selectbox("Histórico Incidentes *", ['Nenhum', '1-2 incidentes', '3+ incidentes'], 
-                               index=['Nenhum', '1-2 incidentes', '3+ incidentes'].index(inp.get('hist', 'Nenhum')))
-            prod = st.number_input("Número de Produtos *", 0, 20, inp.get('prod', 3))
-        with c5: 
-            pep = st.selectbox("PEP/RCA *", ['Não', 'Sim'], 
-                              index=['Não', 'Sim'].index(inp.get('pep', 'Não')))
-        with c6: 
-            nac = st.text_input("Nacionalidade(s)", inp.get('nac', 'Cabo-Verdiana'))
-        
-        st.divider()
-        
-        if st.button("🧮 Calcular Score de Risco", type="primary"):
-            score, classif, prob_alto, fatores = calcular_score_manual(tipo, rend, hist, doc, freq, tempo, prod, rec, pais, ativ, pep, nac)
-            
-            r1, r2, r3 = st.columns(3)
-            
-            # COLUNA 1: Gauge e Fatores
-            with r1:
-                fig_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number", 
-                    value=score, 
-                    title={'text': "Score de Risco"}, 
-                    gauge={
-                        'axis': {'range': [0, 30]}, 
-                        'bar': {'color': "darkblue"}, 
-                        'steps': [
-                            {'range': [0, 6], 'color': '#2ECC71'}, 
-                            {'range': [6, 14], 'color': '#F39C12'}, 
-                            {'range': [14, 30], 'color': '#E74C3C'}
-                        ]
-                    }
-                ))
-                fig_gauge.update_layout(height=350)
-                st.plotly_chart(fig_gauge, use_container_width=True)
-                
-                if fatores:
-                    st.markdown("**⚠️ Fatores de Risco:**")
-                    for f in fatores[:5]:
-                        st.write(f"• {f}")
-                else:
-                    st.success("✓ Nenhum fator crítico identificado")
-            
-            # COLUNA 2: Classificação e Recomendações
-            with r2:
-                # Exibe título com cor
-                if classif == 'Baixo':
-                    st.markdown("### 🟢 **RISCO BAIXO**")
-                elif classif == 'Médio':
-                    st.markdown("### 🟡 **RISCO MÉDIO**")
-                else:
-                    st.markdown("### 🔴 **RISCO ALTO**")
-                
-                # Recomendações
-                st.markdown("**Recomendações:**")
-                if classif == 'Baixo':
-                    st.write("• Atualização KYC a cada 5 anos")
-                    st.write("• Monitorização padrão")
-                    st.write("• Documentação simplificada aceitável")
-                    st.write("• Sem restrições adicionais")
-                elif classif == 'Médio':
-                    st.write("• Atualização KYC a cada 2 anos")
-                    st.write("• Monitorização reforçada trimestral")
-                    st.write("• Verificação periódica de documentação")
-                    st.write("• Análise de movimentações atípicas")
-                else:
-                    st.write("• Atualização KYC anual obrigatória")
-                    st.write("• Monitorização contínua mensal")
-                    st.write("• Análise detalhada de transações")
-                    st.write("• Reporte obrigatório ao compliance")
-                    st.write("• Aprovação de gestor sénior")
-                
-                st.divider()
-                st.write(f"**País:** {pais}")
-                st.write(f"**Atividade:** {ativ}")
-                st.write(f"**Nacionalidade:** {nac}")
-            
-            # COLUNA 3: Comparação com Bayesiano
-            with r3:
-                st.markdown("### Comparação com Modelo Bayesiano")
-                
-                # Prepara evidências
-                evidencias = {
-                    'Documentacao_Expirada': doc,
-                    'Cliente_Nao_Residente': 'Sim' if tipo == 'Não Residente' else 'Não',
-                    'PEP_RCA': pep,
-                    'Historico_Incidentes': hist,
-                    'Numero_Reclamacoes': 'Baixo' if rec == 'Baixo (0)' else 'Médio' if rec == 'Médio (1-2)' else 'Alto',
-                    'Frequencia_Atualizacao': freq
-                }
-                
-                if inferencia:
-                    prob_bayes = calcular_probabilidade_risco(inferencia, evidencias)
-                    if prob_bayes:
-                        p_alto_bayes = prob_bayes.get('Alto', 0)
-                        
-                        col_b1, col_b2 = st.columns(2)
-                        with col_b1:
-                            st.metric("Bayesiano", f"{p_alto_bayes:.1%}")
-                        with col_b2:
-                            st.metric("Paramétrico", f"{prob_alto:.1%}")
-                        
-                        diff = abs(p_alto_bayes - prob_alto)
-                        if diff < 0.15:
-                            st.success(f"✓ Convergentes (Δ = {diff:.1%})")
-                        else:
-                            st.warning(f"⚠️ Divergência (Δ = {diff:.1%})")
-                
-                st.divider()
-                
-                # Comparação com a carteira
-                pct_alto = (df['Nivel_Risco'] == 'Alto').mean()
-                st.metric("% Risco Alto na Carteira", f"{pct_alto:.1%}")
-                
-                if prob_alto > pct_alto:
-                    st.warning("📊 Cliente acima da média da carteira")
-                else:
-                    st.info("📊 Cliente na média ou abaixo")
-                
-                st.divider()
-                st.markdown("**Distribuição da Carteira:**")
-                
-                # Exibe distribuição sem usar markdown com código
-                for t, p in df['Tipo_Cliente'].value_counts(normalize=True).items():
-                    if t == 'Não Residente':
-                        st.write(f"🔴 {t}: {p:.1%}")
-                    elif t == 'Emigrante':
-                        st.write(f"🟡 {t}: {p:.1%}")
-                    else:
-                        st.write(f"🟢 {t}: {p:.1%}")
+    with c1:
+        ev_doc = st.selectbox("Documentação Expirada", opcoes_binarias, key='sim_doc')
+        ev_naores = st.selectbox("Cliente Não Residente", opcoes_binarias, key='sim_naores')
+    with c2:
+        ev_pep = st.selectbox("PEP/RCA", opcoes_binarias, key='sim_pep')
+        ev_pais = st.selectbox("País de Residência", ['Não informado'] + lista_paises, key='sim_pais')
+    with c3:
+        ev_ativ = st.selectbox("Atividade Económica", ['Não informado'] + lista_todas_atividades, key='sim_ativ')
 
-if __name__ == "__main__":
-    main()
+    if st.button("Calcular Probabilidades", type="primary"):
+        evidencias = {}
+        if ev_doc != 'Não informado': evidencias['Documentacao_Expirada'] = ev_doc
+        if ev_naores != 'Não informado': evidencias['Cliente_Nao_Residente'] = ev_naores
+        if ev_pep != 'Não informado': evidencias['PEP_RCA'] = ev_pep
+        if ev_pais != 'Não informado':
+            p_upper = ev_pais.upper().strip()
+            evidencias['Pais_Alto_Risco'] = 'Sim' if (p_upper in FATF_NEGRO or p_upper in FATF_CINZA) else 'Não'
+        if ev_ativ != 'Não informado':
+            if any(r in ev_ativ for r in ATIVIDADES_ALTO_RISCO): 
+                evidencias['Atividade_Grupo'] = 'Risco_Critico'
+            elif 'construção' in ev_ativ.lower(): 
+                evidencias['Atividade_Grupo'] = 'Construcao'
+            else: 
+                evidencias['Atividade_Grupo'] = 'Outros'
+
+        # 1. Calcular probabilidade base (Bayes)
+        probabilidades = inferir_risco(inferencia, evidencias)
+        
+        if probabilidades:
+            # 2. Aplicar Hard Rules completas (incluindo geográficas)
+            linha_simulada = {
+                'PEP_RCA': ev_pep,
+                'Atividade_Grupo': evidencias.get('Atividade_Grupo', 'Outros'),
+                'Cliente_Nao_Residente': ev_naores,
+                'Pais_Residencia': ev_pais if ev_pais != 'Não informado' else ''
+            }
+            prob_final = aplicar_hard_rules_completas(probabilidades, linha_simulada)
+            
+            # 3. Mostrar se houve override
+            houve_override = prob_final != probabilidades
+            if houve_override:
+                st.markdown("""
+                <div style="background: #FDEDEC; border-left: 4px solid #E74C3C; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px;">
+                    <strong>⚠️ HARD RULE APLICADA:</strong> A probabilidade base foi sobreposta por uma regra determinística de negócio.
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # 4. Mostrar probabilidades finais
+            c1, c2, c3 = st.columns(3)
+            for col, risco in zip([c1, c2, c3], ['Baixo', 'Médio', 'Alto']):
+                with col:
+                    st.markdown(f'<div class="kpi-card"><div class="kpi-title">P(Risco = {risco})</div><div class="kpi-value" style="color:{CORES[risco]}">{prob_final[risco]:.1%}</div></div>', unsafe_allow_html=True)
+            
+            fig_prob = go.Figure(go.Bar(x=['Baixo', 'Médio', 'Alto'], y=[prob_final[r] for r in ['Baixo', 'Médio', 'Alto']], marker_color=[CORES[r] for r in ['Baixo', 'Médio', 'Alto']], text=[f"{prob_final[r]:.1%}" for r in ['Baixo', 'Médio', 'Alto']], textposition='outside'))
+            fig_prob.update_layout(title='Distribuição de Probabilidade Final (após Hard Rules)', yaxis_range=[0, 1.15], height=400, plot_bgcolor='white')
+            st.plotly_chart(fig_prob, use_container_width=True)
+
+    st.markdown("---")
+    
+    # --- VALIDAÇÃO EM LOTE ---
+    st.markdown("**Validação em Lote (Rede Bayesiana vs AMLRISK)**")
+    if st.button("Aplicar Modelo a Todos os Clientes", type="primary"):
+        with st.spinner("A processar inferência..."):
+            df_val = aplicar_rede_em_lote(df_f, inferencia)
+            st.session_state['df_val'] = df_val
+            st.success(f"Concluído: {len(df_val):,} clientes.")
+
+    if 'df_val' in st.session_state:
+        df_val = st.session_state['df_val']
+        n = len(df_val)
+        if n > 0:
+            n_ok = df_val['Concorda'].sum()
+            taxa = n_ok / n * 100
+            kappa = cohen_kappa_score(df_val['Classe_AML'], df_val['Classe_RB'])
+            acuracia = accuracy_score(df_val['Classe_AML'], df_val['Classe_RB'])
+            c1, c2, c3 = st.columns(3)
+            with c1: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Concordância</div><div class="kpi-value">{taxa:.1f}%</div><div class="kpi-extra">{n_ok}/{n}</div></div>', unsafe_allow_html=True)
+            with c2: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Cohen Kappa</div><div class="kpi-value">{kappa:.3f}</div></div>', unsafe_allow_html=True)
+            with c3: st.markdown(f'<div class="kpi-card"><div class="kpi-title">Acurácia</div><div class="kpi-value">{acuracia:.1%}</div></div>', unsafe_allow_html=True)
+
+            cm = confusion_matrix(df_val['Classe_AML'], df_val['Classe_RB'], labels=['Baixo', 'Médio', 'Alto'])
+            c1, c2 = st.columns(2)
+            with c1:
+                fig_cm = go.Figure(data=go.Heatmap(z=cm, x=[f"RB: {r}" for r in ['Baixo', 'Médio', 'Alto']], y=[f"AML: {r}" for r in ['Baixo', 'Médio', 'Alto']], text=cm, texttemplate="%{text}", colorscale='Blues', showscale=False, textfont=dict(size=14, color='white')))
+                fig_cm.update_layout(title='Matriz de Confusão', height=400)
+                st.plotly_chart(fig_cm, use_container_width=True)
+            with c2:
+                comparacao = pd.DataFrame({'Classe': ['Baixo', 'Médio', 'Alto'] * 2, 'Modelo': ['AMLRISK'] * 3 + ['Bayes'] * 3, 'Contagem': [(df_val['Classe_AML'] == r).sum() for r in ['Baixo', 'Médio', 'Alto']] + [(df_val['Classe_RB'] == r).sum() for r in ['Baixo', 'Médio', 'Alto']]})
+                fig_comp = px.bar(comparacao, x='Classe', y='Contagem', color='Modelo', barmode='group', color_discrete_map={'AMLRISK': '#3498DB', 'Bayes': '#F39C12'}, text='Contagem')
+                fig_comp.update_traces(textposition='outside')
+                fig_comp.update_layout(title='Comparação de Contagens', height=400, plot_bgcolor='white')
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+            st.markdown(f'<div class="analise-box"><strong>📝 Análise:</strong> A rede obteve <strong>{taxa:.1f}%</strong> de concordância. Kappa = <strong>{kappa:.3f}</strong>. As 4 Hard Rules (PEP, Atividade de Risco, Portugal → Médio, África → Alto) foram aplicadas com sucesso.</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: #8899A6; font-size: 12px; padding: 20px;'>Dashboard desenvolvido por Manilson Semedo | TFC Matemática Aplicada | Uni-CV 2026</div>", unsafe_allow_html=True)
